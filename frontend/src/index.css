@@ -1,3 +1,131 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --page: 250 249 246;
+  --surface: 243 241 236;
+  --bubble: 234 230 221;
+  --ink: 31 29 26;
+  --muted: 107 103 95;
+  --line: 228 224 216;
+  --accent: 63 74 138;
+  --accent-fg: 255 255 255;
+  color-scheme: light;
+}
+
+:root.dark {
+  --page: 31 30 28;
+  --surface: 38 37 34;
+  --bubble: 52 50 45;
+  --ink: 236 233 226;
+  --muted: 154 149 139;
+  --line: 54 52 47;
+  --accent: 154 165 245;
+  --accent-fg: 23 24 31;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-page font-sans text-ink antialiased;
+}
+
+/* Rendered markdown in assistant replies */
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+.markdown p {
+  @apply my-3 leading-7;
+}
+.markdown ul {
+  @apply my-3 list-disc pl-6;
+}
+.markdown ol {
+  @apply my-3 list-decimal pl-6;
+}
+.markdown li {
+  @apply my-1 leading-7;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+  @apply mb-2 mt-5 font-serif font-semibold;
+}
+.markdown h1 {
+  @apply text-xl;
+}
+.markdown h2 {
+  @apply text-lg;
+}
+.markdown blockquote {
+  @apply my-3 border-l-2 border-line pl-4 text-muted;
+}
+.markdown a {
+  @apply underline underline-offset-2;
+}
+.markdown code {
+  @apply rounded bg-bubble px-1.5 py-0.5 font-mono text-[0.85em];
+}
+.markdown pre {
+  @apply my-3 overflow-x-auto rounded-lg border border-line bg-surface p-4 text-sm;
+}
+.markdown pre code {
+  @apply bg-transparent p-0;
+}
+.markdown table {
+  @apply my-3 w-full border-collapse text-sm;
+}
+.markdown th,
+.markdown td {
+  @apply border border-line px-3 py-1.5 text-left;
+}
+
+/* Syntax highlighting (token colours follow the theme) */
+.hljs-comment,
+.hljs-quote {
+  color: rgb(var(--muted));
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal {
+  color: rgb(var(--accent));
+}
+.hljs-string,
+.hljs-attr,
+.hljs-number {
+  color: #b45309;
+}
+:root.dark .hljs-string,
+:root.dark .hljs-attr,
+:root.dark .hljs-number {
+  color: #f0b36b;
+}
+.hljs-title,
+.hljs-function,
+.hljs-built_in {
+  font-weight: 600;
+}
+
+@keyframes pulse-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+.thinking-dot {
+  animation: pulse-dot 1.2s infinite ease-in-out;
+}
