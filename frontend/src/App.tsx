@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ChatPanel from "./components/ChatPanel";
+import SettingsPage from "./components/SettingsPage";
 import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
 import { useMediaQuery } from "./hooks/useMediaQuery";
+import { useProfile } from "./hooks/useProfile";
 import { useTheme } from "./hooks/useTheme";
 import {
   ApiError,
@@ -21,9 +23,12 @@ const SESSIONS_CACHE_KEY = "raga.sessions";
 const SIDEBAR_COLLAPSED_KEY = "raga.sidebarCollapsed";
 const SEARCH_DEBOUNCE_MS = 250;
 const DEFAULT_TITLE = "RAGA";
+const SETTINGS_TITLE = "Settings";
 
 export default function App() {
   const [theme, toggleTheme] = useTheme();
+  const [profile, saveProfile] = useProfile();
+  const [view, setView] = useState<"chat" | "settings">("chat");
   const isMobile = useMediaQuery("(max-width: 767px)");
 
   const [sessions, setSessions] = useState<SessionSummary[]>(() =>
@@ -101,6 +106,7 @@ export default function App() {
   }
 
   function handleNewChat() {
+    setView("chat");
     resetConversation();
     setActiveId(undefined);
     setTitle(DEFAULT_TITLE);
@@ -109,6 +115,7 @@ export default function App() {
   }
 
   async function handleSelect(id: string) {
+    setView("chat");
     if (id === activeId) {
       setDrawerOpen(false);
       return;
@@ -210,6 +217,13 @@ export default function App() {
       collapsed={!isMobile && sidebarCollapsed}
       onToggleCollapsed={() => setSidebarCollapsed((c) => !c)}
       onClose={isMobile ? () => setDrawerOpen(false) : undefined}
+      userName={profile.name}
+      userPhoto={profile.photo}
+      settingsActive={view === "settings"}
+      onOpenSettings={() => {
+        setView("settings");
+        setDrawerOpen(false);
+      }}
     />
   );
 
@@ -229,25 +243,50 @@ export default function App() {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <Navbar
-          title={title}
-          canRename={Boolean(activeId)}
-          onRename={handleRename}
-          badge={badge}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-          showMenuButton={isMobile}
-          onOpenMenu={() => setDrawerOpen(true)}
-        />
-        <ChatPanel
-          messages={messages}
-          generating={generating}
-          error={error}
-          draft={draft}
-          onDraftChange={setDraft}
-          onSend={handleSend}
-          onStop={() => abortInFlight(true)}
-        />
+        {view === "settings" ? (
+          <>
+            <Navbar
+              title={SETTINGS_TITLE}
+              canRename={false}
+              onRename={handleRename}
+              badge={null}
+              theme={theme}
+              onToggleTheme={toggleTheme}
+              showMenuButton={isMobile}
+              onOpenMenu={() => setDrawerOpen(true)}
+              onBack={() => setView("chat")}
+            />
+            <SettingsPage
+              profile={profile}
+              onSave={saveProfile}
+              theme={theme}
+              onToggleTheme={toggleTheme}
+              onBack={() => setView("chat")}
+            />
+          </>
+        ) : (
+          <>
+            <Navbar
+              title={title}
+              canRename={Boolean(activeId)}
+              onRename={handleRename}
+              badge={badge}
+              theme={theme}
+              onToggleTheme={toggleTheme}
+              showMenuButton={isMobile}
+              onOpenMenu={() => setDrawerOpen(true)}
+            />
+            <ChatPanel
+              messages={messages}
+              generating={generating}
+              error={error}
+              draft={draft}
+              onDraftChange={setDraft}
+              onSend={handleSend}
+              onStop={() => abortInFlight(true)}
+            />
+          </>
+        )}
       </div>
     </div>
   );
