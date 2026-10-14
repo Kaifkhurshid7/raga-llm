@@ -6,6 +6,7 @@ import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useTheme } from "./hooks/useTheme";
 import {
   ApiError,
+  getHealth,
   getSession,
   isAbortError,
   listSessions,
@@ -19,7 +20,7 @@ import type { Message } from "./lib/types";
 const SESSIONS_CACHE_KEY = "raga.sessions";
 const SIDEBAR_COLLAPSED_KEY = "raga.sidebarCollapsed";
 const SEARCH_DEBOUNCE_MS = 250;
-const NEW_CHAT_TITLE = "New chat";
+const DEFAULT_TITLE = "RAGA";
 
 export default function App() {
   const [theme, toggleTheme] = useTheme();
@@ -35,7 +36,7 @@ export default function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const [activeId, setActiveId] = useState<string | undefined>();
-  const [title, setTitle] = useState(NEW_CHAT_TITLE);
+  const [title, setTitle] = useState(DEFAULT_TITLE);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -68,11 +69,23 @@ export default function App() {
 
   useEffect(() => writeStorage(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed), [sidebarCollapsed]);
 
+  // Serving condition before the first reply, so the badge is never empty.
+  const [defaultBadge, setDefaultBadge] = useState<string | null>(null);
+  useEffect(() => {
+    getHealth()
+      .then((h) =>
+        setDefaultBadge(
+          [h.mock_inference ? "mock" : null, h.serving_condition].filter(Boolean).join(" · ")
+        )
+      )
+      .catch(() => undefined);
+  }, []);
+
   const badge = useMemo(() => {
     const last = [...messages].reverse().find((m) => m.role === "assistant");
-    if (!last?.modelVersion) return null;
+    if (!last?.modelVersion) return defaultBadge;
     return [last.modelVersion, last.servingCondition].filter(Boolean).join(" · ");
-  }, [messages]);
+  }, [messages, defaultBadge]);
 
   function abortInFlight(restoreDraft: boolean) {
     restoreDraftOnAbort.current = restoreDraft;
@@ -90,7 +103,7 @@ export default function App() {
   function handleNewChat() {
     resetConversation();
     setActiveId(undefined);
-    setTitle(NEW_CHAT_TITLE);
+    setTitle(DEFAULT_TITLE);
     setMessages([]);
     setDrawerOpen(false);
   }
