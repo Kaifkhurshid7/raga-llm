@@ -1,122 +1,177 @@
-# RAGA — Clean Architecture
+# RAGA Architecture
+
+| | |
+|---|---|
+| Document | Architecture |
+| Status | Draft v1.0 |
+| Related | [PRD](PRD.md), [Workflows](WORKFLOW.md) |
 
 ## 1. Layering Principle
 
-The system follows the **Clean Architecture** dependency rule: inner layers never import from outer layers. Dependencies point inward, toward domain logic; the model and the database are both treated as swappable *details*, not the center of the design.
+The system follows the Clean Architecture dependency rule: inner layers never import from outer layers, and dependencies point toward domain logic. The model and the database are treated as replaceable details rather than the center of the design.
 
+```mermaid
+flowchart TB
+    subgraph PRES[Presentation layer]
+        FE[Frontend<br/>React, TypeScript, Vite, Tailwind]
+    end
+    subgraph API[Interface layer - backend/app/api]
+        RT[FastAPI routers<br/>Pydantic validation, CORS]
+    end
+    subgraph APP[Application layer - backend/app/core]
+        SVC[ConversationService<br/>orchestration, prompt building]
+        PORT[InferenceClient port]
+    end
+    subgraph DATA[Persistence layer - backend/app/db, models]
+        REPO[SQLAlchemy models and sessions]
+        PG[(PostgreSQL)]
+    end
+    subgraph INF[Inference service - separate process]
+        GEN[/generate endpoint/]
+        MODEL[Base model, frozen]
+        LORA[LoRA adapter, optional]
+        RET[Retriever, optional]
+        DEC[Decoding configuration]
+    end
+
+    FE -->|REST JSON| RT
+    RT --> SVC
+    SVC --> REPO
+    REPO --> PG
+    SVC --> PORT
+    PORT -->|internal REST| GEN
+    GEN --> MODEL
+    GEN -.-> LORA
+    GEN -.-> RET
+    GEN --> DEC
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Presentation Layer                                           │
-│  React + TypeScript + Vite + Tailwind (frontend/)              │
-└───────────────────────────┬─────────────────────────────────┘
-                            │ HTTPS / REST (JSON)
-┌───────────────────────────▼─────────────────────────────────┐
-│  Interface / API Layer                                        │
-│  FastAPI routers — backend/app/api/                            │
-│  (request validation via Pydantic schemas, auth stub, CORS)    │
-└───────────────────────────┬─────────────────────────────────┘
-                            │
-┌───────────────────────────▼─────────────────────────────────┐
-│  Application / Service Layer                                  │
-│  backend/app/core/ — conversation service, orchestration       │
-│  (talks to inference client + repository; no framework code)  │
-└──────────────┬─────────────────────────────┬─────────────────┘
-               │                             │
-┌──────────────▼───────────────┐  ┌──────────▼──────────────────┐
-│  Domain / Repository Layer     │  │  Inference Client (port)      │
-│  backend/app/db/ — Postgres    │  │  backend/app/core/inference_   │
-│  repository implementations    │  │  client.py (HTTP client to     │
-│  (SQLAlchemy models, CRUD)      │  │  inference-service)            │
-└─────────────────────────────┘  └──────────┬──────────────────┘
-                                             │ internal REST call
-                              ┌──────────────▼──────────────────┐
-                              │  Inference Service (own process)  │
-                              │  inference-service/app/           │
-                              │  - loads base model (frozen)       │
-                              │  - loads LoRA adapter (optional)   │
-                              │  - decoding config (fixed/logged)  │
-                              │  - RAG retriever (optional mode)   │
-                              └─────────────────────────────────┘
-```
 
-## 2. Why Two Separate Services (Backend vs. Inference Service)
+## 2. Service Separation
 
-| Concern | Backend | Inference Service |
+| Concern | Backend | Inference service |
 |---|---|---|
 | Holds model weights | No | Yes |
-| Needs GPU | No | Yes |
-| Owns persistence (Postgres) | Yes | No |
-| Can be restarted/swapped independently | Yes | Yes (swap base ↔ fine-tuned ↔ RAG without touching backend) |
-| Runs on | 8 GB laptop | 25.3 GB VRAM GPU host |
+| Requires GPU | No | Yes |
+| Owns persistence (PostgreSQL) | Yes | No |
+| Restartable and replaceable independently | Yes | Yes |
+| Target host | 8 GB RAM laptop | GPU host with approximately 25 GB VRAM |
 
-This separation is what lets the two-hardware development model work: the application (backend + frontend + DB) is built and tested entirely on a laptop with no GPU, while the inference service is only stood up on the GPU host when model work begins. The backend talks to the inference service purely over HTTP, through a thin `InferenceClient` port — so from the backend's point of view, swapping the baseline model for the fine-tuned one is a config change, not a code change.
+The separation supports a two-hardware development model. The application (frontend, backend, database) is built and tested on a machine without a GPU, using a mock inference client. The inference service is started on the GPU host only when model work begins.
 
-## 3. Request Flow (Chat Query)
+The backend reaches the inference service solely through the `InferenceClient` port over HTTP. Changing the serving model from baseline to fine-tuned is therefore a configuration change, not a code change.
 
-1. **Frontend** sends `POST /api/chat` with `{session_id, message}`.
-2. **API layer** validates the payload (Pydantic schema), resolves `session_id`.
-3. **Service layer** (`ConversationService`) loads prior turns from the repository, builds the prompt (system prompt + history + new message), and calls `InferenceClient.generate(...)`.
-4. **InferenceClient** makes an internal REST call to the inference service's `/generate` endpoint, passing the prompt and the **fixed decoding config** (never chosen ad hoc per request).
-5. **Inference service** runs the model (base, or base+LoRA adapter, or base+RAG context depending on configured mode), returns `{text, prompt_tokens, output_tokens, model_version, decoding_config}`.
-6. **Service layer** persists the turn (user message + model response + full metadata) via the repository.
-7. **API layer** returns the response to the frontend.
+## 3. Chat Request Flow
 
-Every generation's full metadata (which model/adapter version served it, which decoding config was used) is persisted — this is what makes later evaluation auditable rather than just "trust the log."
+```mermaid
+sequenceDiagram
+    autonumber
+    participant FE as Frontend
+    participant API as API layer
+    participant SVC as ConversationService
+    participant DB as PostgreSQL
+    participant INF as Inference service
 
-## 4. Domain Boundaries
+    FE->>API: POST /api/chat {session_id, message}
+    API->>API: Validate payload (Pydantic)
+    API->>SVC: handle_message(session_id, message)
+    SVC->>DB: Load prior turns
+    DB-->>SVC: History
+    SVC->>SVC: Build prompt (system + history + message)
+    SVC->>INF: POST /generate (prompt, fixed decoding config)
+    INF->>INF: Run base, base + LoRA, few-shot, or RAG
+    INF-->>SVC: text, token counts, model_version, decoding_config
+    SVC->>DB: Persist turn with full metadata
+    SVC-->>API: Result
+    API-->>FE: ChatResponse
+```
 
-- **Backend** knows nothing about model internals — it only knows "call generate(prompt, config) and get text back." This means the backend code does not change at all between M1 (baseline-only) and M3 (fine-tuned model available).
-- **Inference service** knows nothing about conversations, sessions, or Postgres — it is a pure model-serving boundary, reusable by the evaluation harness (`finetuning/eval/`) directly, without going through the backend or frontend at all.
-- **Dataset pipeline** (`dataset/`) and **fine-tuning** (`finetuning/`) are entirely offline, batch processes — they do not run inside either service at request time. Their only contract with the serving system is the LoRA adapter artifact and the retrieval corpus they produce.
+Every generation persists the model or adapter version and the decoding configuration that produced it. This makes later evaluation auditable from the stored record.
 
-## 5. Technology Stack
+## 4. Serving Conditions
 
-| Layer | Technology | Why |
+The inference service selects behavior from the `serving_condition` request field.
+
+```mermaid
+flowchart TD
+    REQ[POST /generate] --> COND{serving_condition}
+    COND -->|baseline| RUN[Generate]
+    COND -->|few_shot| FS[Prepend fixed examples] --> RUN
+    COND -->|rag| RT[Retrieve passages<br/>and add context] --> RUN
+    COND -->|finetuned| CHK{Adapter loaded?}
+    CHK -->|yes| RUN
+    CHK -->|no| ERR409[409 Conflict]
+    RT -.->|retriever not implemented| ERR501[501 Not Implemented]
+    RUN --> RESP[Response with<br/>model_version and decoding_config]
+```
+
+## 5. Domain Boundaries
+
+- **Backend** knows nothing about model internals. It calls `generate(prompt, config)` and receives text. It does not change between the baseline and fine-tuned milestones.
+- **Inference service** knows nothing about conversations, sessions, or PostgreSQL. It is a pure model-serving boundary and is also used directly by the evaluation harness.
+- **Dataset pipeline** (`dataset/`) and **fine-tuning** (`finetuning/`) are offline batch processes. Their only contract with the serving system is the LoRA adapter artifact and the retrieval corpus.
+
+## 6. Technology Stack
+
+| Layer | Technology | Rationale |
 |---|---|---|
-| Frontend | React, TypeScript, Vite, Tailwind | Fast dev loop, no GPU dependency, standard SPA stack |
-| Backend API | FastAPI (Python) | Async, auto OpenAPI schema, thin — matches a small well-defined endpoint surface better than Django's batteries-included stack |
-| Inference service | FastAPI + Hugging Face `transformers` + `peft` | Same async framework as backend for consistency; `peft` is the LoRA loading/training library |
-| Database | PostgreSQL | Relational, durable conversation history |
-| Containerization | Docker + docker-compose | Reproducible across the two-hardware dev model |
-| Base model | Llama 3.1 8B Instruct (NousResearch mirror, pending Meta gated-repo approval) | Open-weight, instruction-tuned, fits 25.3 GB VRAM at fp16 |
-| Fine-tuning | LoRA via Hugging Face `peft` | Parameter-efficient; <1% of params trained; fits available VRAM |
+| Frontend | React, TypeScript, Vite, Tailwind CSS | Fast development loop, standard SPA stack, no GPU dependency |
+| Backend API | FastAPI (Python) | Async, automatic OpenAPI schema, suited to a small well-defined endpoint surface |
+| Inference service | FastAPI, Hugging Face `transformers`, `peft` | Same framework as the backend; `peft` provides LoRA training and loading |
+| Database | PostgreSQL 16 | Relational, durable conversation history |
+| Containerization | Docker, Docker Compose | Reproducible across both hardware environments |
+| Base model | Llama 3.1 8B Instruct (NousResearch mirror) | Open weights, instruction-tuned, fits in 25 GB VRAM at float16 |
+| Fine-tuning | LoRA via `peft` | Parameter-efficient; under 1% of parameters trained |
 
-## 6. Repository Structure
+## 7. Decoding Configuration
 
-```
+Decoding settings are defined in one place (`inference-service/app/core/decoding_config.py`) and held constant across baseline and fine-tuned evaluation, so that any measured difference is attributable to the model or adapter.
+
+| Parameter | Value | Note |
+|---|---|---|
+| `do_sample` | `false` | Greedy decoding for reproducibility |
+| `repetition_penalty` | 1.1 | |
+| `max_new_tokens` | 220 | Per-category caps are defined for evaluation |
+| `seed` | 42 | |
+| `temperature`, `top_p`, `top_k` | 1.0, 1.0, 50 | Ignored while sampling is disabled |
+
+## 8. Repository Structure
+
+```text
 raga-project/
-├── docs/                  # PRD, architecture, workflow (this folder)
-├── backend/               # FastAPI app: API + service + persistence layers
-│   └── app/
-│       ├── api/           # routers (interface layer)
-│       ├── core/          # services, inference client port, config
-│       ├── models/        # SQLAlchemy ORM models
-│       ├── schemas/       # Pydantic request/response schemas
-│       └── db/            # session management, repository implementations
-├── inference-service/     # FastAPI app serving the model
-│   └── app/
-│       ├── api/           # /generate, /health endpoints
-│       ├── core/          # model loader, decoding config, RAG retriever
-│       └── models/        # request/response schemas for this service
-├── frontend/               # React + Vite + Tailwind chat UI
-├── dataset/                # offline dataset construction pipeline
-│   ├── structured/         # ragas.csv, concepts.csv, taals.csv (ground truth)
-│   ├── generated/          # output JSONL per category
-│   ├── scripts/            # generate.py, validate.py, split.py, contamination_check.py
-│   └── docs/               # CONVENTIONS.md
-├── finetuning/              # offline LoRA training + evaluation
-│   ├── configs/            # LoRA hyperparameters
-│   └── eval/                # fabrication-rate / over-refusal-rate probes + harness
-├── infra/                   # docker-compose, env templates
-└── docker-compose.yml
+|-- docs/                    PRD, architecture, workflows
+|-- backend/                 FastAPI application
+|   `-- app/
+|       |-- api/             Routers (interface layer)
+|       |-- core/            Services, inference client, configuration
+|       |-- models/          SQLAlchemy ORM models
+|       |-- schemas/         Pydantic request and response schemas
+|       `-- db/              Session management
+|-- inference-service/       FastAPI model server
+|   `-- app/
+|       |-- api/             /generate endpoint
+|       |-- core/            Model loader, decoding config, few-shot, retriever
+|       `-- models/          Request and response schemas
+|-- frontend/                React + Vite + Tailwind chat UI
+|-- dataset/                 Offline dataset pipeline
+|   |-- structured/          ragas.csv, concepts.csv, taals.csv
+|   |-- generated/           Output JSONL per category (git-ignored)
+|   |-- splits/              train, val, test splits
+|   |-- scripts/             generate, validate, contamination_check, split
+|   `-- docs/                CONVENTIONS.md
+|-- finetuning/              Offline training and evaluation
+|   |-- configs/             LoRA hyperparameters
+|   `-- eval/                Probes and evaluation harness
+|-- infra/                   Environment templates
+`-- docker-compose.yml
 ```
 
-## 7. Technical Risks & Mitigations
+## 9. Technical Risks and Mitigations
 
 | Risk | Mitigation |
 |---|---|
-| Fine-tuning overfits on a ~10–12k example dataset | Low LoRA rank (regularizing by construction); held-out validation split; monitor eval loss |
-| Fine-tuned model regresses on general ability outside the domain | Evaluate on a small general-instruction-following sanity probe, not just the music probes |
-| RAG retrieval surfaces a contested/wrong passage | Retrieval corpus built only from the same verified sources as training data; contested facts explicitly flagged rather than presented as settled |
-| Decoding config drifts between baseline and fine-tuned evaluation | Config is version-controlled (`finetuning/configs/`) and logged per-generation, never set ad hoc |
-| GPU host unavailable mid-development | Backend/frontend developed and fully testable against a mocked `InferenceClient` with no GPU required |
+| Overfitting on a dataset of roughly 10,000 to 12,000 examples | Low LoRA rank, held-out validation split, evaluation-loss monitoring |
+| Regression on general instruction following | Include a small general-ability sanity probe alongside the music probes |
+| RAG surfaces a contested or incorrect passage | Corpus built only from the verified sources used for training; contested facts flagged explicitly |
+| Decoding configuration drift between conditions | Single version-controlled definition, logged with every generation |
+| GPU host unavailable | Backend and frontend testable against the mock inference client |
+| Open CORS and default database credentials | Acceptable for local development only; restrict before any shared deployment |

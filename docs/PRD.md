@@ -1,93 +1,104 @@
-# Product Requirements Document (PRD)
-## RAGA — Raga-Aware Generative Assistant
+# Product Requirements Document
 
-**Status:** Draft v1.0
-**Owner:** Your Name
-**Last updated:** 2026-10-13
-
----
+| | |
+|---|---|
+| Product | RAGA: Raga-Aware Generative Assistant |
+| Status | Draft v1.0 |
+| Owner | Project maintainer |
+| Last updated | 2026-10-14 |
+| Related | [Architecture](ARCHITECTURE.md), [Workflows](WORKFLOW.md) |
 
 ## 1. Problem Statement
 
-General-purpose LLMs (e.g., Llama 3.1 8B Instruct) answer questions about Hindustani classical music with the same fluent confidence they bring to well-represented topics — including when they are factually wrong. Facts like a raga's *vadi* (dominant note), *samvadi*, *thaat* (parent scale), or *aroha/avaroha* are precise and verifiable, but thinly represented in web-scale pretraining data. When asked about a raga it hasn't reliably learned, the model does not say "I don't know" — it fabricates a plausible, well-formed, **wrong** answer.
+General-purpose LLMs such as Llama 3.1 8B Instruct answer questions about Hindustani classical music with the same fluent confidence they bring to well-represented topics, including when they are wrong. Facts such as a raga's vadi (dominant note), samvadi, thaat (parent scale), or aroha/avaroha are precise and verifiable but thinly represented in web-scale pretraining data. When asked about a raga it has not reliably learned, the model does not decline; it produces a plausible, well-formed, incorrect answer.
 
-This is dangerous specifically because of the fluency: a music student with no way to independently verify the answer has no signal that anything is wrong.
+The fluency is what makes this harmful: a student with no independent way to verify the answer has no signal that anything is wrong.
 
 ## 2. Goals
 
-| # | Goal |
-|---|------|
-| G1 | Measure how often the base model fabricates vs. correctly refuses on out-of-domain/unanswerable musicological questions |
-| G2 | Reduce the fabrication rate via LoRA fine-tuning on a small, verified instruction dataset |
-| G3 | Ensure the fix does not come at the cost of over-refusal (refusing genuinely answerable questions) |
-| G4 | Ship a working chat application (RAGA) that demonstrates the model's behavior end-to-end |
-| G5 | Produce a reusable dataset-construction methodology that generalizes to other low-resource domains |
+| ID | Goal |
+|---|---|
+| G1 | Measure how often the base model fabricates rather than refuses on unanswerable musicological questions |
+| G2 | Reduce the fabrication rate through LoRA fine-tuning on a small, verified instruction dataset |
+| G3 | Ensure the reduction does not come at the cost of over-refusal on answerable questions |
+| G4 | Deliver a working chat application that demonstrates the behavior end to end |
+| G5 | Produce a dataset-construction methodology that generalizes to other low-resource domains |
 
 ## 3. Non-Goals
 
-- NOT building a general-purpose music chatbot covering Carnatic music, Western theory, or audio analysis.
-- NOT training from scratch — this is parameter-efficient fine-tuning (LoRA) on top of a frozen pretrained base model.
-- NOT building multi-user auth, billing, or production-scale infrastructure — this is a research/demonstration artifact.
-- NOT claiming the dataset is an exhaustive account of the raga system — it is scoped to one verified reference (Bor & Rao, *The Raga Guide*) plus targeted extensions.
+- A general-purpose music chatbot covering Carnatic music, Western theory, or audio analysis.
+- Training from scratch. The work is parameter-efficient fine-tuning on a frozen pretrained base.
+- Multi-user authentication, billing, or production-scale infrastructure. This is a research and demonstration artifact.
+- An exhaustive account of the raga system. The dataset is scoped to one verified reference (Bor and Rao, *The Raga Guide*) plus targeted extensions.
 
-## 4. Target Users / Personas
+## 4. Personas
 
-| Persona | Need |
-|---|---|
-| **Music student (primary)** | Wants quick, trustworthy answers about ragas while practicing/learning; needs the system to say "I'm not sure" rather than invent facts |
-| **Evaluator / faculty (secondary)** | Needs to see measured evidence (not claims) that fine-tuning changed model behavior, with reproducible baselines |
-| **Future researcher (secondary)** | Wants the dataset pipeline and evaluation harness to be reusable for a different low-resource domain |
+| Persona | Priority | Need |
+|---|---|---|
+| Music student | Primary | Trustworthy answers while learning; the system must say it is unsure rather than invent facts |
+| Evaluator or faculty | Secondary | Measured, reproducible evidence that fine-tuning changed model behavior |
+| Researcher | Secondary | A dataset pipeline and evaluation harness reusable in a different low-resource domain |
 
 ## 5. User Stories
 
-1. *As a student*, I can type a question about a raga and get an answer, or a clear statement that the system isn't sure, instead of a confident guess.
-2. *As a student*, I can ask about a raga that doesn't exist and have the system tell me so, rather than inventing details for it.
-3. *As an evaluator*, I can see the system's fabrication rate and over-refusal rate side by side, so I can tell whether "improvement" is real or just the model refusing everything.
-4. *As a researcher*, I can re-run the dataset validation and contamination-check scripts on new data and trust that unverified content is blocked automatically.
-5. *As a developer*, I can swap the serving model (base vs. LoRA-adapted vs. RAG-augmented) without changing the frontend or backend.
+1. As a student, I can ask about a raga and receive an answer or a clear statement that the system is not sure.
+2. As a student, I can ask about a raga that does not exist and be told so, rather than receive invented details.
+3. As an evaluator, I can see fabrication rate and over-refusal rate side by side, to tell real improvement from blanket refusal.
+4. As a researcher, I can re-run validation and contamination checks on new data and trust that unverified content is blocked.
+5. As a developer, I can swap the serving model (base, LoRA-adapted, RAG-augmented) without changing the frontend or backend.
 
 ## 6. Functional Requirements
 
 | ID | Requirement |
 |---|---|
-| FR1 | Chat interface accepts a free-text question and returns a generated answer |
-| FR2 | Backend persists conversation history per session in PostgreSQL |
-| FR3 | Inference service loads the base model + (optionally) a LoRA adapter, and serves generations under a fixed, logged decoding configuration |
-| FR4 | Inference service supports a RAG mode: retrieve top-k passages from a verified corpus and condition generation on them |
-| FR5 | Dataset pipeline generates instruction/output pairs from structured CSV ground truth across 10 categories, including a dedicated out-of-domain/refusal category |
-| FR6 | Validation script blocks any record marked `UNVERIFIED` from reaching the training split |
-| FR7 | Contamination-check script prevents evaluation-probe questions from leaking into the training split |
-| FR8 | Evaluation harness computes fabrication rate (hallucination probe) and over-refusal rate (near-miss probe) together, for every serving condition |
+| FR1 | The chat interface accepts a free-text question and returns a generated answer |
+| FR2 | The backend persists conversation history per session in PostgreSQL |
+| FR3 | The inference service loads the base model and, optionally, a LoRA adapter, and serves generations under a fixed, logged decoding configuration |
+| FR4 | The inference service supports a RAG mode that retrieves top-k passages from a verified corpus and conditions generation on them |
+| FR5 | The dataset pipeline generates instruction/output pairs from structured ground truth across ten categories, including an out-of-domain refusal category |
+| FR6 | Validation blocks any record marked `UNVERIFIED` from reaching the training split |
+| FR7 | The contamination check prevents evaluation-probe questions from entering the training split |
+| FR8 | The evaluation harness computes fabrication rate and over-refusal rate together for every serving condition |
 
 ## 7. Non-Functional Requirements
 
 | ID | Requirement |
 |---|---|
-| NFR1 | Baseline inference must be reproducible: identical input → byte-identical output under greedy decoding |
-| NFR2 | Inference service must run within 25.3 GB VRAM at float16 for the 8B base model + adapter |
-| NFR3 | Application backend/frontend must run on an 8 GB RAM laptop without requiring GPU access |
-| NFR4 | All settings used for a generation (decoding config, model/adapter version) must be logged alongside the output for auditability |
-| NFR5 | No fabricated page-level citations may appear in model training text (reserved for the retrieval corpus only) |
+| NFR1 | Baseline inference is reproducible: identical input yields byte-identical output under greedy decoding |
+| NFR2 | The inference service runs within 25 GB VRAM at float16 for the 8B base model plus adapter |
+| NFR3 | The backend and frontend run on an 8 GB RAM machine without GPU access |
+| NFR4 | The decoding configuration and model or adapter version are logged with every generation |
+| NFR5 | No page-level citations appear in training output text; they are reserved for the retrieval corpus |
 
 ## 8. Success Metrics
 
 | Metric | Definition | Target |
 |---|---|---|
-| Fabrication rate | % of hallucination-probe questions answered with a confident but false fact | Lower than baseline, measured not assumed |
-| Over-refusal rate | % of near-miss-probe (genuinely answerable) questions incorrectly declined | Must not rise materially relative to baseline |
-| Reproducibility | 3 repeated greedy-decoding runs on the same input | 100% identical output |
-| Dataset integrity | % of generated records passing `validate.py` with zero issues | 100% before any record enters training |
+| Fabrication rate | Share of hallucination-probe questions answered with a confident but false fact | Below baseline, measured rather than assumed |
+| Over-refusal rate | Share of near-miss-probe (answerable) questions incorrectly declined | No material increase over baseline |
+| Reproducibility | Three repeated greedy-decoding runs on the same input | 100% identical output |
+| Dataset integrity | Share of generated records passing `validate.py` with zero issues | 100% before any record enters training |
 
-## 9. Release Plan (Scope per Milestone)
+## 9. Release Plan
+
+```mermaid
+flowchart LR
+    M1[M1<br/>Baseline and decoding study<br/>Complete] --> M2[M2<br/>Dataset pipeline<br/>Complete]
+    M2 --> M3[M3<br/>LoRA fine-tuning<br/>Not started]
+    M3 --> M4[M4<br/>Four-condition evaluation<br/>Not started]
+    M2 --> M5[M5<br/>RAGA application<br/>In progress]
+    M4 --> DONE[Release]
+    M5 --> DONE
+```
 
 | Milestone | Scope | Status |
 |---|---|---|
-| M1 — Baseline & decoding study | Reproducible baseline, decoding-parameter sweep | ✅ Done |
-| M2 — Dataset pipeline | Structured ground truth, generation, validation, contamination check, entity research | ✅ Done |
-| M3 — LoRA fine-tuning | Train adapter on verified split | 🔜 Not started |
-| M4 — Four-condition evaluation | Baseline / few-shot / RAG / fine-tuned, fabrication + over-refusal rate | 🔜 Not started |
-| M5 — RAGA application | Frontend, backend, inference service, Docker wiring | 🟡 In progress |
+| M1 | Reproducible baseline and decoding-parameter sweep | Complete |
+| M2 | Structured ground truth, generation, validation, contamination check, entity research | Complete |
+| M3 | Train adapter on the verified split | Not started |
+| M4 | Baseline, few-shot, RAG, and fine-tuned comparison on fabrication and over-refusal rates | Not started |
+| M5 | Frontend, backend, inference service, Docker wiring | In progress |
 
-## 10. Open Risks
+## 10. Risks
 
-See `docs/ARCHITECTURE.md` §7 and `docs/WORKFLOW.md` §5 for technical risks and mitigations.
+Technical risks and mitigations are tracked in [ARCHITECTURE.md](ARCHITECTURE.md), section 9, and workflow risks in [WORKFLOW.md](WORKFLOW.md), section 6.
