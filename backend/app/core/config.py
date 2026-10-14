@@ -1,27 +1,32 @@
-"""
-Application configuration (layer: cross-cutting / config).
+"""Application settings, loaded from environment variables or `.env`."""
+from typing import List
 
-Nothing in this file knows about FastAPI routes or the database driver
-specifics -- it just centralizes environment-derived settings so the
-rest of the app depends on `settings`, not on `os.environ` scattered
-everywhere.
-"""
-from pydantic_settings import BaseSettings
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     app_name: str = "RAGA Backend"
     database_url: str = "postgresql://raga:raga@db:5432/raga"
+
     inference_service_url: str = "http://inference-service:8001"
     inference_timeout_seconds: float = 60.0
+    use_mock_inference: bool = True
 
-    # Decoding config is owned by the inference service, but the backend
-    # needs to know which *named* condition it is requesting, so the
-    # choice is explicit end-to-end rather than implicit.
-    default_serving_condition: str = "baseline"  # baseline | few_shot | rag | finetuned
+    # One of: baseline | few_shot | rag | finetuned
+    default_serving_condition: str = "baseline"
 
-    class Config:
-        env_file = ".env"
+    # Accepts a comma-separated string or a list.
+    cors_origins: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _split_origins(cls, v):
+        if isinstance(v, str):
+            return [o.strip() for o in v.split(",") if o.strip()]
+        return v
 
 
 settings = Settings()
