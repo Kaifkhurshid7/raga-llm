@@ -21,6 +21,7 @@ services:
       - INFERENCE_SERVICE_URL=${INFERENCE_SERVICE_URL:-http://inference-service:8001}
       - USE_MOCK_INFERENCE=${USE_MOCK_INFERENCE:-true}
       - DEFAULT_SERVING_CONDITION=${DEFAULT_SERVING_CONDITION:-baseline}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
     ports:
       - "8000:8000"
     depends_on:
@@ -49,6 +50,8 @@ services:
   frontend:
     build: ./frontend
     restart: unless-stopped
+    environment:
+      - API_PROXY_TARGET=http://backend:8000
     ports:
       - "5173:5173"
     depends_on:
