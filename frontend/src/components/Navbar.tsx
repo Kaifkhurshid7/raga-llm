@@ -14,7 +14,7 @@ interface Props {
 }
 
 const iconButton =
-  "flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-ink";
+  "flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors duration-100 hover:bg-overlay hover:text-ink";
 
 export default function Navbar({
   title,
@@ -52,7 +52,7 @@ export default function Navbar({
   }
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line px-3">
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-3">
       {showMenuButton && (
         <button type="button" className={iconButton} onClick={onOpenMenu} aria-label="Open sidebar">
           <MenuIcon />
@@ -77,7 +77,7 @@ export default function Navbar({
             onClick={startEditing}
             disabled={!canRename}
             title={canRename ? "Click to rename" : undefined}
-            className="max-w-full truncate rounded-md px-2 py-1 text-left text-sm font-medium enabled:hover:bg-surface"
+            className="max-w-full truncate rounded-md px-2 py-1 text-left text-sm font-medium transition-colors duration-100 enabled:hover:bg-overlay"
           >
             {title}
           </button>
@@ -96,7 +96,18 @@ export default function Navbar({
         onClick={onToggleTheme}
         aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
       >
-        {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+        <span className="relative block h-5 w-5">
+          <SunIcon
+            className={`absolute inset-0 h-5 w-5 transition-[opacity,transform] duration-200 ease-in-out ${
+              theme === "dark" ? "rotate-0 opacity-100" : "-rotate-90 opacity-0"
+            }`}
+          />
+          <MoonIcon
+            className={`absolute inset-0 h-5 w-5 transition-[opacity,transform] duration-200 ease-in-out ${
+              theme === "dark" ? "rotate-90 opacity-0" : "rotate-0 opacity-100"
+            }`}
+          />
+        </span>
       </button>
     </header>
   );
