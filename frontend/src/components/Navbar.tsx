@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { Theme } from "../hooks/useTheme";
-import { MenuIcon, MoonIcon, SunIcon } from "./icons";
+import { ArrowLeftIcon, MenuIcon, MoonIcon, SunIcon } from "./icons";
 
 interface Props {
   title: string;
@@ -11,6 +11,8 @@ interface Props {
   onToggleTheme: () => void;
   showMenuButton: boolean;
   onOpenMenu: () => void;
+  /** When set, a back button is shown before the title. */
+  onBack?: () => void;
 }
 
 const iconButton =
@@ -25,6 +27,7 @@ export default function Navbar({
   onToggleTheme,
   showMenuButton,
   onOpenMenu,
+  onBack,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
@@ -56,6 +59,12 @@ export default function Navbar({
       {showMenuButton && (
         <button type="button" className={iconButton} onClick={onOpenMenu} aria-label="Open sidebar">
           <MenuIcon />
+        </button>
+      )}
+
+      {onBack && (
+        <button type="button" className={iconButton} onClick={onBack} aria-label="Back to chat">
+          <ArrowLeftIcon />
         </button>
       )}
 
