@@ -1,111 +1,240 @@
-import { useEffect, useRef, useState } from "react";
-import ChatMessage from "./components/ChatMessage";
-import { ApiError, sendMessage } from "./lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ChatPanel from "./components/ChatPanel";
+import Navbar from "./components/Navbar";
+import Sidebar from "./components/Sidebar";
+import { useMediaQuery } from "./hooks/useMediaQuery";
+import { useTheme } from "./hooks/useTheme";
+import {
+  ApiError,
+  getSession,
+  isAbortError,
+  listSessions,
+  renameSession,
+  sendMessage,
+  type SessionSummary,
+} from "./lib/api";
+import { readStorage, writeStorage } from "./lib/storage";
+import type { Message } from "./lib/types";
 
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  modelVersion?: string;
-}
-
-const MAX_LENGTH = 2000;
+const SESSIONS_CACHE_KEY = "raga.sessions";
+const SIDEBAR_COLLAPSED_KEY = "raga.sidebarCollapsed";
+const SEARCH_DEBOUNCE_MS = 250;
+const NEW_CHAT_TITLE = "New chat";
 
 export default function App() {
+  const [theme, toggleTheme] = useTheme();
+  const isMobile = useMediaQuery("(max-width: 767px)");
+
+  const [sessions, setSessions] = useState<SessionSummary[]>(() =>
+    readStorage<SessionSummary[]>(SESSIONS_CACHE_KEY, [])
+  );
+  const [query, setQuery] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
+    readStorage(SIDEBAR_COLLAPSED_KEY, false)
+  );
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const [activeId, setActiveId] = useState<string | undefined>();
+  const [title, setTitle] = useState(NEW_CHAT_TITLE);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [sessionId, setSessionId] = useState<string | undefined>();
-  const [loading, setLoading] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
 
+  const abortRef = useRef<AbortController | null>(null);
+  const restoreDraftOnAbort = useRef(false);
+
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refreshSessions = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  // Load (and search) the session list from the backend.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const list = await listSessions(query);
+        if (cancelled) return;
+        setSessions(list);
+        if (!query.trim()) writeStorage(SESSIONS_CACHE_KEY, list);
+      } catch {
+        /* keep the cached list when the backend is unreachable */
+      }
+    }, query ? SEARCH_DEBOUNCE_MS : 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query, refreshKey]);
 
-  async function handleSend() {
-    const userMessage = input.trim();
-    if (!userMessage || loading) return;
-    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
-    setInput("");
-    setLoading(true);
+  useEffect(() => writeStorage(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed), [sidebarCollapsed]);
+
+  const badge = useMemo(() => {
+    const last = [...messages].reverse().find((m) => m.role === "assistant");
+    if (!last?.modelVersion) return null;
+    return [last.modelVersion, last.servingCondition].filter(Boolean).join(" · ");
+  }, [messages]);
+
+  function abortInFlight(restoreDraft: boolean) {
+    restoreDraftOnAbort.current = restoreDraft;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setGenerating(false);
+  }
+
+  function resetConversation() {
+    abortInFlight(false);
     setError(null);
-
-    try {
-      const res = await sendMessage(userMessage, sessionId);
-      setSessionId(res.session_id);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: res.response, modelVersion: res.model_version },
-      ]);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Something went wrong.");
-    } finally {
-      setLoading(false);
-    }
+    setDraft("");
   }
 
   function handleNewChat() {
+    resetConversation();
+    setActiveId(undefined);
+    setTitle(NEW_CHAT_TITLE);
     setMessages([]);
-    setSessionId(undefined);
-    setError(null);
-    setInput("");
+    setDrawerOpen(false);
   }
 
+  async function handleSelect(id: string) {
+    if (id === activeId) {
+      setDrawerOpen(false);
+      return;
+    }
+    resetConversation();
+    setDrawerOpen(false);
+    try {
+      const detail = await getSession(id);
+      setActiveId(detail.id);
+      setTitle(detail.title);
+      setMessages(
+        detail.turns.flatMap<Message>((t) => [
+          { role: "user", content: t.user_message },
+          {
+            role: "assistant",
+            content: t.model_response,
+            modelVersion: t.model_version,
+            servingCondition: t.serving_condition,
+          },
+        ])
+      );
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Couldn't load that conversation.");
+    }
+  }
+
+  async function handleSend() {
+    const text = draft.trim();
+    if (!text || generating) return;
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    restoreDraftOnAbort.current = false;
+
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    setDraft("");
+    setGenerating(true);
+    setError(null);
+
+    try {
+      const res = await sendMessage(text, activeId, controller.signal);
+      if (controller.signal.aborted) return;
+
+      const isNewSession = !activeId;
+      setActiveId(res.session_id);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: res.response,
+          modelVersion: res.model_version,
+          servingCondition: res.serving_condition,
+        },
+      ]);
+      if (isNewSession) {
+        getSession(res.session_id)
+          .then((d) => setTitle(d.title))
+          .catch(() => undefined);
+      }
+      refreshSessions();
+    } catch (e) {
+      if (isAbortError(e)) {
+        if (restoreDraftOnAbort.current) {
+          setMessages((prev) => prev.slice(0, -1));
+          setDraft(text);
+        }
+        return;
+      }
+      if (controller.signal.aborted) return;
+      setError(e instanceof ApiError ? e.message : "Something went wrong.");
+    } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setGenerating(false);
+      }
+    }
+  }
+
+  async function handleRename(next: string) {
+    if (!activeId) return;
+    const previous = title;
+    setTitle(next);
+    try {
+      await renameSession(activeId, next);
+      refreshSessions();
+    } catch {
+      setTitle(previous);
+    }
+  }
+
+  const sidebar = (
+    <Sidebar
+      sessions={sessions}
+      activeId={activeId}
+      query={query}
+      onQueryChange={setQuery}
+      onSelect={handleSelect}
+      onNewChat={handleNewChat}
+      collapsed={!isMobile && sidebarCollapsed}
+      onToggleCollapsed={() => setSidebarCollapsed((c) => !c)}
+      onClose={isMobile ? () => setDrawerOpen(false) : undefined}
+    />
+  );
+
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center">
-      <div className="w-full max-w-2xl flex flex-col h-screen p-4">
-        <header className="py-4 border-b flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900">RAGA</h1>
-            <p className="text-xs text-gray-500">Raga-Aware Generative Assistant</p>
-          </div>
+    <div className="flex h-dvh overflow-hidden bg-page text-ink">
+      {!isMobile && sidebar}
+
+      {isMobile && drawerOpen && (
+        <div className="fixed inset-0 z-40 flex">
+          {sidebar}
           <button
-            className="text-xs text-gray-500 hover:text-gray-900 disabled:opacity-40"
-            onClick={handleNewChat}
-            disabled={loading || messages.length === 0}
-          >
-            New chat
-          </button>
-        </header>
-
-        <main className="flex-1 overflow-y-auto py-4" aria-live="polite">
-          {messages.length === 0 && (
-            <p className="text-sm text-gray-400 text-center mt-10">
-              Ask about a raga's vadi, samvadi, thaat, or aroha/avaroha.
-            </p>
-          )}
-          {messages.map((m, i) => (
-            <ChatMessage key={i} {...m} />
-          ))}
-          {loading && (
-            <p className="text-sm text-gray-400 animate-pulse">RAGA is thinking…</p>
-          )}
-          {error && (
-            <p role="alert" className="text-sm text-red-500">
-              {error}
-            </p>
-          )}
-          <div ref={bottomRef} />
-        </main>
-
-        <footer className="py-4 border-t flex gap-2">
-          <input
-            className="flex-1 rounded-full border px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            value={input}
-            maxLength={MAX_LENGTH}
-            placeholder="Ask about a raga..."
-            aria-label="Message"
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSend()}
+            className="flex-1 bg-black/40"
+            onClick={() => setDrawerOpen(false)}
+            aria-label="Close sidebar"
           />
-          <button
-            className="rounded-full bg-indigo-600 text-white px-5 py-2 text-sm disabled:opacity-50"
-            onClick={handleSend}
-            disabled={loading || !input.trim()}
-          >
-            {loading ? "..." : "Send"}
-          </button>
-        </footer>
+        </div>
+      )}
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Navbar
+          title={title}
+          canRename={Boolean(activeId)}
+          onRename={handleRename}
+          badge={badge}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          showMenuButton={isMobile}
+          onOpenMenu={() => setDrawerOpen(true)}
+        />
+        <ChatPanel
+          messages={messages}
+          generating={generating}
+          error={error}
+          draft={draft}
+          onDraftChange={setDraft}
+          onSend={handleSend}
+          onStop={() => abortInFlight(true)}
+        />
       </div>
     </div>
   );
