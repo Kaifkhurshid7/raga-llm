@@ -1,0 +1,10 @@
+concept_name,category,definition,contrasts_with,example_context,distinguishing_axis,contested,verification_status,verified_by,notes
+meend,ornamentation,A continuous glide between two notes in which the intervening pitches are sounded without interruption,kan swara; gamak,Descent from komal Dha to Pa in Bhairav,duration and continuity,FALSE,VERIFIED,,Sustained; carries expressive weight in its own right
+kan swara,ornamentation,A brief grace note touching an adjacent swara immediately before or after the principal note,meend,Touch of Ma before Ga in Yaman,duration; too short to register as a note,FALSE,VERIFIED,,Notated as small superscript
+gamak,ornamentation,A forceful oscillation between notes producing a heavy resonant effect,meend; andolan,Lower register phrases in dhrupad,force and weight,FALSE,VERIFIED,,Prominent in dhrupad and khayal alap
+andolan,ornamentation,A slow controlled oscillation on a single note remaining within its shruti,gamak; kampit,Komal Re and komal Dha in Bhairav,speed and narrowness,FALSE,VERIFIED,,Speed is a gharana marker
+thaat,theory,A parent scale used to classify ragas into ten groups,raga; jati,Yaman belongs to Kalyan thaat,classificatory framework not a performed entity,FALSE,VERIFIED,,Bhatkhande system; ten thaats
+jati,theory,The classification of a raga by the number of swaras used in aroha and avaroha,thaat,Bhupali is audav-audav,note count,FALSE,VERIFIED,,audav 5 shadav 6 sampurna 7
+badhat,structure,The progressive development of a raga in performance,vistar,Khayal development,progression,TRUE,VERIFIED,,Usage overlaps with vistar; sources differ
+shruti,theory,The smallest perceptible pitch interval in the classical theoretical system,swara,Theoretical pitch division,size relative to a swara,TRUE,VERIFIED,,Historical values disputed; 22 shrutis conventionally
+samay,theory,The time of day traditionally assigned to a raga for performance,prahar,Bhairav is a morning raga,temporal assignment,TRUE,VERIFIED,,Theoretical system; practice varies

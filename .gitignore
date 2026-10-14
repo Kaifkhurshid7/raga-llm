@@ -1,0 +1,60 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.coverage
+htmlcov/
+
+# --- Node / frontend ---
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+npm-debug.log*
+yarn-error.log*
+
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+infra/.env
+!infra/.env.example
+
+# --- Dataset (generated artifacts) ---
+dataset/generated/*.jsonl
+dataset/splits/*.jsonl
+
+# --- Fine-tuning / models ---
+finetuning/adapters/
+finetuning/outputs/
+finetuning/wandb/
+wandb/
+*.safetensors
+*.gguf
+*.bin
+*.pt
+*.pth
+*.ckpt
+
+# --- Local data / databases ---
+*.sqlite
+*.sqlite3
+*.db
+chroma/
+.chroma/
+
+# --- Logs ---
+*.log
+
+# --- Editors & OS ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

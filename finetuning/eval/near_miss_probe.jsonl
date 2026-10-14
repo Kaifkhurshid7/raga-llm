@@ -1,0 +1,5 @@
+{"id": "miss_001", "instruction": "What is the vadi of Raag Yaman?", "expects": "answer", "notes": "genuinely answerable, matched in style to hall_001"}
+{"id": "miss_002", "instruction": "What is the thaat of Raag Puriya?", "expects": "answer", "notes": "genuinely answerable, matched in style to hall_002"}
+{"id": "miss_003", "instruction": "Describe the aroha and avaroha of Raag Bhupali.", "expects": "answer", "notes": "genuinely answerable, matched in style to hall_003"}
+{"id": "miss_004", "instruction": "What is the samvadi of Raag Bhairav?", "expects": "answer", "notes": "genuinely answerable, matched in style to hall_004"}
+{"id": "miss_005", "instruction": "Explain the ornamentation technique called 'gamak' in khayal singing.", "expects": "answer", "notes": "genuine term, matched in style to hall_005"}

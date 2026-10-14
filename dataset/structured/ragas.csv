@@ -1,0 +1,8 @@
+raga_name,thaat,vadi,samvadi,aroha,avaroha,jati,samay,verification_status,source,notes
+Yaman,Kalyan,Ga,Ni,N R G M' D N S',S' N D M' G R S,sampurna-sampurna,night (first prahar),VERIFIED,Bor & Rao - The Raga Guide,Tivra Ma is the defining feature
+Bhupali,Kalyan,Ga,Dha,S R G P D S',S' D P G R S,audav-audav,night (first prahar),VERIFIED,Bor & Rao - The Raga Guide,Omits Ma and Ni entirely
+Bhairav,Bhairav,Dha,Re,S r G M P d N S',S' N d P M G r S,sampurna-sampurna,morning (first prahar),VERIFIED,Bor & Rao - The Raga Guide,Komal Re and komal Dha define the raga
+Bageshree,Kafi,Ma,Sa,S G M D N S',S' N D M G R S,audav-sampurna,night (second prahar),VERIFIED,Bor & Rao - The Raga Guide,Ni is komal; Re and Ga are vakra in aroha
+Puriya,Marwa,Ga,Ni,N r G M' D N S',S' N D M' G r S,sampurna-sampurna,evening (sunset),VERIFIED,Bor & Rao - The Raga Guide,Komal Re and tivra Ma together; Pa varjit
+Malashree,"Bilawal (enclosed); Khamaj (enclosed)",Ga,Ni,S G P N S',S' N P G S,audav-audav,any time,VERIFIED,Bor & Rao - The Raga Guide via ragajunglism.org,Example of a multi-thaat raga
+Shivangi,"Kafi (enclosed); Bilawal (enclosed)",Ma,Sa,S R M P N S',S' N P M R S,,any time,UNVERIFIED,ragajunglism.org (thaat membership only; full vadi/samvadi not cross-checked),Needs secondary source cross-check before training use

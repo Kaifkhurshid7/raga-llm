@@ -1,0 +1,58 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: raga
+      POSTGRES_PASSWORD: raga
+      POSTGRES_DB: raga
+    ports:
+      - "5432:5432"
+    volumes:
+      - raga_db_data:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://raga:raga@db:5432/raga
+      - INFERENCE_SERVICE_URL=${INFERENCE_SERVICE_URL:-http://inference-service:8001}
+      - USE_MOCK_INFERENCE=${USE_MOCK_INFERENCE:-true}
+      - DEFAULT_SERVING_CONDITION=${DEFAULT_SERVING_CONDITION:-baseline}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+  # Only bring this up on the GPU host -- see README.md "two-hardware
+  # development model". Left in docker-compose for completeness, but
+  # the laptop-only workflow sets USE_MOCK_INFERENCE=true above and
+  # does not need this service running at all.
+  inference-service:
+    build: ./inference-service
+    restart: unless-stopped
+    environment:
+      - BASE_MODEL_ID=${BASE_MODEL_ID:-NousResearch/Meta-Llama-3.1-8B-Instruct}
+      - LORA_ADAPTER_PATH=${LORA_ADAPTER_PATH:-}
+    ports:
+      - "8001:8001"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  raga_db_data:

@@ -1,0 +1,34 @@
+# LoRA fine-tuning configuration.
+# STATUS: designed, not yet executed (see docs/PRD.md milestone M3).
+# Rank/alpha/target_modules are starting points for the planned small
+# hyperparameter sweep on the val split -- not claimed as final.
+
+base_model: "NousResearch/Meta-Llama-3.1-8B-Instruct"  # mirror pending Meta approval
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+  bias: "none"
+  task_type: "CAUSAL_LM"
+
+training:
+  train_file: "../dataset/splits/train.jsonl"
+  val_file: "../dataset/splits/val.jsonl"
+  output_dir: "./adapters/raga-lora-v1"
+  precision: "float16"
+  seed: 42
+  learning_rate: 2.0e-4
+  num_train_epochs: 3
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  warmup_ratio: 0.03
+  logging_steps: 10
+  eval_steps: 50
+  save_strategy: "epoch"
+
+# Fallback if 25.3GB VRAM is insufficient at float16 for base + adapter + optimizer state.
+quantization_fallback:
+  enabled: false
+  method: "qlora-4bit"
