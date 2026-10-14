@@ -1,13 +1,4 @@
-"""
-InferenceClient (layer: application-layer *port*).
-
-This is the single seam between the backend and the model-serving
-process. The service layer depends only on this interface -- it never
-imports `transformers`, never knows about GPUs, and never changes
-between "baseline only" and "fine-tuned model available". Swapping
-which model serves a request is a config change in the inference
-service, not a code change here.
-"""
+"""Client for the inference service, plus a mock for GPU-free development."""
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -26,7 +17,9 @@ class GenerationResult:
 
 
 class InferenceClient:
-    def __init__(self, base_url: str = None, timeout: float = None):
+    def __init__(
+        self, base_url: Optional[str] = None, timeout: Optional[float] = None
+    ) -> None:
         self.base_url = base_url or settings.inference_service_url
         self.timeout = timeout or settings.inference_timeout_seconds
 
@@ -56,20 +49,18 @@ class InferenceClient:
 
 
 class MockInferenceClient(InferenceClient):
-    """
-    Used for backend/frontend development with no GPU and no inference
-    service running at all -- exactly the "laptop-only" half of the
-    two-hardware development model described in docs/ARCHITECTURE.md.
-    """
+    """Returns a canned response without contacting any service."""
 
-    async def generate(self, history, message, serving_condition="baseline") -> GenerationResult:
+    async def generate(
+        self,
+        history: List[Dict[str, str]],
+        message: str,
+        serving_condition: str = "baseline",
+    ) -> GenerationResult:
         return GenerationResult(
-            text=(
-                "[mock response -- inference-service not connected] "
-                f"You asked: {message!r}"
-            ),
+            text=f"[mock response] You asked: {message!r}",
             model_version="mock-0.0",
-            decoding_config={"do_sample": False, "note": "mock client, no real decoding"},
+            decoding_config={"mock": True},
             prompt_tokens=len(message.split()),
-            output_tokens=10,
+            output_tokens=0,
         )
