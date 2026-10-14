@@ -1,23 +1,30 @@
-interface Props {
-  role: "user" | "assistant";
-  content: string;
-  modelVersion?: string;
-}
+import { isUncertain } from "../lib/uncertainty";
+import type { Message } from "../lib/types";
+import Markdown from "./Markdown";
+
+type Props = Message;
 
 export default function ChatMessage({ role, content, modelVersion }: Props) {
-  const isUser = role === "user";
-  return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3`}>
-      <div
-        className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm ${
-          isUser ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-900"
-        }`}
-      >
-        <p className="whitespace-pre-wrap">{content}</p>
-        {!isUser && modelVersion && (
-          <p className="mt-1 text-[10px] text-gray-400">served by {modelVersion}</p>
-        )}
+  if (role === "user") {
+    return (
+      <div className="flex justify-end">
+        <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-bubble px-4 py-2.5 text-[15px] leading-6">
+          {content}
+        </p>
       </div>
+    );
+  }
+
+  const uncertain = isUncertain(content);
+  return (
+    <div className="text-[15px]">
+      <Markdown>{content}</Markdown>
+      <p className="mt-2 flex items-center gap-2 text-xs text-muted">
+        {modelVersion && <span>{modelVersion}</span>}
+        {uncertain && (
+          <span className="rounded-full border border-line px-2 py-0.5">uncertain</span>
+        )}
+      </p>
     </div>
   );
 }
