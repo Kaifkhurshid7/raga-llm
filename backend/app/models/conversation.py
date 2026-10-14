@@ -1,10 +1,8 @@
-"""
-ORM models (layer: domain entities, persisted via SQLAlchemy).
-"""
+"""ORM models for chat sessions and turns."""
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Integer, JSON
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.db.session import Base
@@ -14,22 +12,22 @@ def _uuid() -> str:
     return str(uuid.uuid4())
 
 
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 class Session(Base):
     __tablename__ = "sessions"
 
     id = Column(String, primary_key=True, default=_uuid)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_now)
 
     turns = relationship("Turn", back_populates="session", order_by="Turn.created_at")
 
 
 class Turn(Base):
-    """
-    One user message + one model response, with full generation metadata
-    kept alongside it -- this is what makes later evaluation auditable:
-    every stored answer says exactly which model/adapter and which
-    decoding config produced it.
-    """
+    """A user message and the model's reply, with the generation metadata."""
+
     __tablename__ = "turns"
 
     id = Column(String, primary_key=True, default=_uuid)
@@ -38,12 +36,12 @@ class Turn(Base):
     user_message = Column(Text, nullable=False)
     model_response = Column(Text, nullable=False)
 
-    serving_condition = Column(String, nullable=False)   # baseline | few_shot | rag | finetuned
-    model_version = Column(String, nullable=False)       # e.g. "llama-3.1-8b-instruct-base"
-    decoding_config = Column(JSON, nullable=False)        # logged verbatim from inference-service
+    serving_condition = Column(String, nullable=False)
+    model_version = Column(String, nullable=False)
+    decoding_config = Column(JSON, nullable=False)
     prompt_tokens = Column(Integer, nullable=True)
     output_tokens = Column(Integer, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_now)
 
     session = relationship("Session", back_populates="turns")
