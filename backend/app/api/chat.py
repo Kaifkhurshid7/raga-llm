@@ -10,8 +10,7 @@ from app.core.config import settings
 from app.core.conversation_service import ConversationService
 from app.core.inference_client import InferenceClient
 from app.db.session import get_db
-from app.models.conversation import Session as SessionModel
-from app.schemas.chat import ChatRequest, ChatResponse, HistoryResponse, TurnOut
+from app.schemas.chat import ChatRequest, ChatResponse
 
 logger = logging.getLogger(__name__)
 
@@ -41,23 +40,4 @@ async def chat(
         decoding_config=result.decoding_config,
         prompt_tokens=result.prompt_tokens,
         output_tokens=result.output_tokens,
-    )
-
-
-@router.get("/sessions/{session_id}", response_model=HistoryResponse)
-def get_session(session_id: str, db: DBSession = Depends(get_db)) -> HistoryResponse:
-    session = db.get(SessionModel, session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Session not found.")
-    return HistoryResponse(
-        session_id=session.id,
-        turns=[
-            TurnOut(
-                user_message=t.user_message,
-                model_response=t.model_response,
-                model_version=t.model_version,
-                serving_condition=t.serving_condition,
-            )
-            for t in session.turns
-        ],
     )
