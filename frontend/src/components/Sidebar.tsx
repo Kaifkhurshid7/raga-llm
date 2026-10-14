@@ -1,7 +1,15 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { SessionSummary } from "../lib/api";
 import { groupByDate } from "../lib/grouping";
-import { CloseIcon, InfoIcon, PlusIcon, SearchIcon, SidebarIcon } from "./icons";
+import {
+  ChevronRightIcon,
+  CloseIcon,
+  GearIcon,
+  PlusIcon,
+  SearchIcon,
+  SidebarIcon,
+} from "./icons";
+import Avatar from "./Avatar";
 
 interface Props {
   sessions: SessionSummary[];
@@ -15,6 +23,10 @@ interface Props {
   onToggleCollapsed: () => void;
   /** Rendered inside the mobile drawer: always expanded, with a close button. */
   onClose?: () => void;
+  userName: string;
+  userPhoto: string | null;
+  settingsActive: boolean;
+  onOpenSettings: () => void;
 }
 
 const EXPANDED_WIDTH = "w-[280px]";
@@ -33,8 +45,11 @@ export default function Sidebar({
   collapsed,
   onToggleCollapsed,
   onClose,
+  userName,
+  userPhoto,
+  settingsActive,
+  onOpenSettings,
 }: Props) {
-  const [showInfo, setShowInfo] = useState(false);
   const groups = useMemo(() => groupByDate(sessions), [sessions]);
 
   // Collapsing: labels fade first, then the width shrinks. Expanding: width grows, then labels fade in.
@@ -67,27 +82,27 @@ export default function Sidebar({
         aria-hidden={collapsed}
         className={`absolute inset-y-0 left-0 flex ${EXPANDED_WIDTH} flex-col transition-[opacity,visibility] duration-100 ${fullMotion}`}
       >
-        <div className="flex items-center gap-2 p-3">
-          <button
-            onClick={onNewChat}
-            className="flex h-9 flex-1 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors duration-100 hover:bg-overlay"
-          >
-            <PlusIcon className="h-4 w-4" />
-            New chat
-          </button>
+        <div className="flex items-center justify-between px-4 pt-3">
+          <span className="text-sm font-semibold tracking-widest">RAGA</span>
           {onClose ? (
             <button className={iconButton} onClick={onClose} aria-label="Close sidebar">
               <CloseIcon />
             </button>
           ) : (
-            <button
-              className={iconButton}
-              onClick={onToggleCollapsed}
-              aria-label="Collapse sidebar"
-            >
+            <button className={iconButton} onClick={onToggleCollapsed} aria-label="Collapse sidebar">
               <SidebarIcon />
             </button>
           )}
+        </div>
+
+        <div className="px-3 pb-2 pt-2">
+          <button
+            onClick={onNewChat}
+            className="flex h-9 w-full items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors duration-100 hover:bg-overlay"
+          >
+            <PlusIcon className="h-4 w-4" />
+            New chat
+          </button>
         </div>
 
         <div className="px-3 pb-2">
@@ -138,25 +153,28 @@ export default function Sidebar({
         </nav>
 
         <div className="p-3">
-          <div className="rounded-xl border border-line bg-raised px-3 py-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold tracking-widest">RAGA</span>
-              <button
-                className={iconButton}
-                onClick={() => setShowInfo((v) => !v)}
-                aria-label="About RAGA"
-                aria-expanded={showInfo}
-                tabIndex={collapsed ? -1 : 0}
-              >
-                <InfoIcon />
-              </button>
-            </div>
-            {showInfo && (
-              <p className="pb-1 text-xs leading-5 text-muted">
-                A research assistant for Hindustani classical music, tuned to say when it can't
-                verify a fact instead of guessing.
-              </p>
-            )}
+          <div className="overflow-hidden rounded-xl border border-line bg-raised">
+            <button
+              onClick={onOpenSettings}
+              aria-current={settingsActive ? "page" : undefined}
+              tabIndex={collapsed ? -1 : 0}
+              className={`flex w-full items-center gap-3 px-3 py-3 text-left transition-colors duration-100 hover:bg-overlay ${
+                settingsActive ? "bg-overlay" : ""
+              }`}
+            >
+              <GearIcon className="h-5 w-5 text-muted" />
+              <span className="flex-1 text-sm text-muted">Settings</span>
+              <ChevronRightIcon className="h-4 w-4 text-faint" />
+            </button>
+
+            <button
+              onClick={onOpenSettings}
+              tabIndex={collapsed ? -1 : 0}
+              className="flex w-full items-center gap-3 border-t border-line px-3 py-3 text-left transition-colors duration-100 hover:bg-overlay"
+            >
+              <Avatar name={userName} photo={userPhoto} className="h-8 w-8 text-sm" />
+              <span className="truncate text-sm font-medium">{userName}</span>
+            </button>
           </div>
         </div>
       </div>
