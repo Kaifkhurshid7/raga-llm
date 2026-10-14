@@ -73,6 +73,16 @@ export function sendMessage(
   return request("/api/chat", jsonInit("POST", { message, session_id: sessionId ?? null }, signal));
 }
 
+export interface Health {
+  status: string;
+  mock_inference: boolean;
+  serving_condition: string;
+}
+
+export function getHealth(): Promise<Health> {
+  return request("/health");
+}
+
 export function listSessions(query?: string): Promise<SessionSummary[]> {
   const qs = query?.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
   return request(`/api/sessions${qs}`);
