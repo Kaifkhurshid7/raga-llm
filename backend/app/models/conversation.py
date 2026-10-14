@@ -20,9 +20,16 @@ class Session(Base):
     __tablename__ = "sessions"
 
     id = Column(String, primary_key=True, default=_uuid)
+    title = Column(String, nullable=True)
     created_at = Column(DateTime, default=_now)
+    updated_at = Column(DateTime, default=_now)
 
-    turns = relationship("Turn", back_populates="session", order_by="Turn.created_at")
+    turns = relationship(
+        "Turn",
+        back_populates="session",
+        order_by="Turn.created_at",
+        cascade="all, delete-orphan",
+    )
 
 
 class Turn(Base):
