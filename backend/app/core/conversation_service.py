@@ -1,10 +1,12 @@
 """Conversation orchestration: session lookup, history, inference, persistence."""
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
 from app.core.inference_client import GenerationResult, InferenceClient
+from app.core.session_service import derive_title
 from app.models.conversation import Session as SessionModel, Turn
 
 SYSTEM_PROMPT = (
@@ -43,6 +45,9 @@ class ConversationService:
                 output_tokens=result.output_tokens,
             )
         )
+        if not session.title:
+            session.title = derive_title(message)
+        session.updated_at = datetime.now(timezone.utc)
         self.db.commit()
 
         return session.id, result
