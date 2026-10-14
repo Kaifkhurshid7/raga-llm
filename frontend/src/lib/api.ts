@@ -8,17 +8,36 @@ export interface ChatResponse {
   output_tokens?: number;
 }
 
+export class ApiError extends Error {
+  constructor(message: string, public status?: number) {
+    super(message);
+  }
+}
+
 export async function sendMessage(
   message: string,
   sessionId?: string
 ): Promise<ChatResponse> {
-  const res = await fetch("/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, session_id: sessionId ?? null }),
-  });
+  let res: Response;
+  try {
+    res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, session_id: sessionId ?? null }),
+    });
+  } catch {
+    throw new ApiError("Couldn't reach the backend. Is it running?");
+  }
+
   if (!res.ok) {
-    throw new Error(`Backend returned ${res.status}`);
+    let detail = `Backend returned ${res.status}`;
+    try {
+      const body = await res.json();
+      if (typeof body?.detail === "string") detail = body.detail;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(detail, res.status);
   }
   return res.json();
 }
