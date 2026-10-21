@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type Ref } from "react";
 import type { SessionSummary } from "../lib/api";
+import type { ExportFormat } from "../lib/export";
 import { groupByDate } from "../lib/grouping";
 import Avatar from "./Avatar";
 import ConfirmDialog from "./ConfirmDialog";
@@ -10,15 +11,11 @@ import {
   PlusIcon,
   SearchIcon,
   SidebarIcon,
+  SpinnerIcon,
 } from "./icons";
 import SessionRow from "./SessionRow";
 
 export type SessionsStatus = "loading" | "ready" | "error";
-
-export interface SidebarNotice {
-  text: string;
-  kind: "info" | "error";
-}
 
 interface Props {
   sessions: SessionSummary[];
@@ -33,9 +30,17 @@ interface Props {
   onDeleteSession: (id: string) => void;
   onTogglePin: (session: SessionSummary) => void;
   onShareSession: (session: SessionSummary) => void;
-  /** Result of a conversation action, shown until dismissed. */
-  notice: SidebarNotice | null;
-  onDismissNotice: () => void;
+  onExportSession: (session: SessionSummary, format: ExportFormat) => void;
+  onArchiveSession: (session: SessionSummary) => void;
+  /** Conversations with a request in flight; their actions are disabled. */
+  busyIds?: ReadonlySet<string>;
+  /** A search request is pending (results below may be stale). */
+  searching?: boolean;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
+  /** Lets the app focus the search field (Ctrl/Cmd+K). */
+  searchRef?: Ref<HTMLInputElement>;
   /** Icon-only rail (desktop only). */
   collapsed: boolean;
   onToggleCollapsed: () => void;
@@ -76,8 +81,14 @@ export default function Sidebar({
   onDeleteSession,
   onTogglePin,
   onShareSession,
-  notice,
-  onDismissNotice,
+  onExportSession,
+  onArchiveSession,
+  busyIds,
+  searching = false,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
+  searchRef,
   collapsed,
   onToggleCollapsed,
   onClose,
@@ -152,39 +163,43 @@ export default function Sidebar({
           <label className="flex items-center gap-2 rounded-lg border border-line bg-raised px-3 py-2 transition-[border-color,box-shadow] duration-150 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgb(var(--accent)/0.15)]">
             <SearchIcon className="h-4 w-4 shrink-0 text-faint" />
             <input
-              type="search"
+              ref={searchRef}
+              type="text"
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && query) {
+                  e.stopPropagation();
+                  onQueryChange("");
+                }
+              }}
               placeholder="Search conversations…"
               aria-label="Search conversations"
               tabIndex={focusable ? 0 : -1}
               className="w-full bg-transparent text-sm outline-none placeholder:text-faint"
             />
+            {searching && <SpinnerIcon className="h-4 w-4 shrink-0 text-faint" />}
+            {query && (
+              <button
+                type="button"
+                onClick={() => onQueryChange("")}
+                aria-label="Clear search"
+                title="Clear search"
+                tabIndex={focusable ? 0 : -1}
+                className="shrink-0 text-faint hover:text-ink"
+              >
+                <CloseIcon className="h-4 w-4" />
+              </button>
+            )}
           </label>
         </div>
-
-        {notice && (
-          <div
-            role={notice.kind === "error" ? "alert" : "status"}
-            className="mx-4 mb-2 flex items-start justify-between gap-2 rounded-lg border border-line bg-raised px-3 py-2 text-xs text-muted"
-          >
-            <span>{notice.text}</span>
-            <button
-              type="button"
-              onClick={onDismissNotice}
-              aria-label="Dismiss message"
-              tabIndex={focusable ? 0 : -1}
-              className="shrink-0 text-faint hover:text-ink"
-            >
-              <CloseIcon className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
 
         <nav className="flex-1 overflow-y-auto px-3 pb-2" aria-label="Recent conversations">
           {status === "error" && (
             <div role="alert" className="mx-2 my-2 rounded-lg border border-line bg-raised p-3 text-sm">
-              <p className="text-muted">Couldn't load conversations.</p>
+              <p className="text-muted">
+                {query.trim() ? "Couldn't search conversations." : "Couldn't load conversations."}
+              </p>
               <button
                 type="button"
                 onClick={onRetry}
@@ -196,7 +211,7 @@ export default function Sidebar({
             </div>
           )}
           {status === "loading" && sessions.length === 0 && <SessionSkeleton />}
-          {status === "ready" && groups.length === 0 && (
+          {status === "ready" && groups.length === 0 && !searching && (
             <p className="px-3 py-6 text-center text-sm text-muted">
               {query.trim() ? "No matching conversations." : "Your conversations will appear here."}
             </p>
@@ -215,12 +230,28 @@ export default function Sidebar({
                     onRename={onRenameSession}
                     onTogglePin={onTogglePin}
                     onShare={onShareSession}
+                    onExport={onExportSession}
+                    onArchive={onArchiveSession}
+                    query={query}
+                    busy={busyIds?.has(s.id) ?? false}
                     onRequestDelete={setPendingDelete}
                   />
                 ))}
               </ul>
             </section>
           ))}
+          {hasMore && onLoadMore && status !== "error" && (
+            <button
+              type="button"
+              onClick={onLoadMore}
+              disabled={loadingMore}
+              tabIndex={focusable ? 0 : -1}
+              className="mx-2 mb-2 flex h-9 w-[calc(100%-1rem)] items-center justify-center gap-2 rounded-lg text-sm text-muted transition-colors duration-100 hover:bg-overlay hover:text-ink disabled:opacity-60"
+            >
+              {loadingMore && <SpinnerIcon />}
+              {loadingMore ? "Loading…" : "Show more"}
+            </button>
+          )}
         </nav>
 
         <div className="border-t border-line p-2">

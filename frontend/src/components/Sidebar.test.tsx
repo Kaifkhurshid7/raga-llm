@@ -24,8 +24,8 @@ function setup(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
     onDeleteSession: vi.fn(),
     onTogglePin: vi.fn(),
     onShareSession: vi.fn(),
-    notice: null,
-    onDismissNotice: vi.fn(),
+    onExportSession: vi.fn(),
+    onArchiveSession: vi.fn(),
     collapsed: false,
     onToggleCollapsed: vi.fn(),
     userName: "Test User",
@@ -133,19 +133,57 @@ describe("Sidebar", () => {
     expect(onRenameSession).not.toHaveBeenCalled();
   });
 
-  it("shows a dismissible notice about a failed action", async () => {
-    const { onDismissNotice } = setup({
-      notice: { text: "Couldn't delete the conversation.", kind: "error" },
-    });
-    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't delete the conversation.");
-    await userEvent.click(screen.getByRole("button", { name: "Dismiss message" }));
-    expect(onDismissNotice).toHaveBeenCalled();
+  it("clears the search with the clear button and with Escape", async () => {
+    const { onQueryChange } = setup({ query: "yaman" });
+    await userEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(onQueryChange).toHaveBeenLastCalledWith("");
+    vi.mocked(onQueryChange).mockClear();
+    await userEvent.type(screen.getByLabelText("Search conversations"), "{Escape}");
+    expect(onQueryChange).toHaveBeenCalledWith("");
   });
 
-  it("announces an informational notice politely, not as an error", () => {
-    setup({ notice: { text: "Conversation copied to the clipboard.", kind: "info" } });
-    expect(screen.getByRole("status")).toHaveTextContent("Conversation copied to the clipboard.");
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  it("hides the clear button when there is no query", () => {
+    setup();
+    expect(screen.queryByRole("button", { name: "Clear search" })).not.toBeInTheDocument();
+  });
+
+  it("shows a snippet with the match highlighted", () => {
+    setup({
+      query: "komal",
+      sessions: [{ ...sessions[0], snippet: "…uses komal Re and komal Dha…" }],
+    });
+    const marks = screen.getAllByText("komal", { selector: "mark" });
+    expect(marks).toHaveLength(2);
+  });
+
+  it("explains an empty search", () => {
+    setup({ query: "zzz", sessions: [] });
+    expect(screen.getByText("No matching conversations.")).toBeInTheDocument();
+    expect(screen.queryByText("Your conversations will appear here.")).not.toBeInTheDocument();
+  });
+
+  it("reports a failed search and offers a retry", async () => {
+    const { onRetry } = setup({ query: "zzz", status: "error" });
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't search conversations.");
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(onRetry).toHaveBeenCalled();
+  });
+
+  it("does not claim there are no results while a search is pending", () => {
+    setup({ query: "yam", sessions: [], searching: true });
+    expect(screen.queryByText("No matching conversations.")).not.toBeInTheDocument();
+  });
+
+  it("offers Show more only when the backend has more, and disables it while loading", async () => {
+    const { onLoadMore } = setup({ hasMore: true, onLoadMore: vi.fn() });
+    await userEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(onLoadMore).toHaveBeenCalled();
+  });
+
+  it("disables a busy conversation's menu so an action cannot be submitted twice", () => {
+    setup({ busyIds: new Set(["1"]) });
+    expect(screen.getByRole("button", { name: "Options for Yaman overview" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Options for Taal Teentaal" })).toBeEnabled();
   });
 
   it("shows the Pinned group first", () => {
@@ -161,11 +199,19 @@ describe("Sidebar conversation menu", () => {
     return screen.getByRole("menu");
   }
 
-  it("offers Rename, Pin, Share and Delete, with Delete last", async () => {
+  it("offers every supported action, with Delete last", async () => {
     setup();
     const menu = await openMenu();
     const names = within(menu).getAllByRole("menuitem").map((i) => i.textContent);
-    expect(names).toEqual(["Rename", "Pin", "Share", "Delete"]);
+    expect(names).toEqual([
+      "Rename",
+      "Pin",
+      "Share",
+      "Export as Markdown",
+      "Export as PDF",
+      "Archive",
+      "Delete",
+    ]);
   });
 
   it("opens beside the sidebar, not inside it where it could be clipped", async () => {
