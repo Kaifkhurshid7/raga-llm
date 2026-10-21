@@ -2,6 +2,8 @@ import type { Evidence } from "./types";
 
 export interface ChatResponse {
   session_id: string;
+  /** Id of the new turn, used to rate the answer. Absent on an older backend. */
+  turn_id?: string;
   response: string;
   serving_condition: string;
   model_version: string;
@@ -17,11 +19,22 @@ export interface SessionSummary {
   title: string;
   /** Absent on responses from an older backend. */
   pinned?: boolean;
+  archived?: boolean;
+  /** True while a public share link is active. */
+  shared?: boolean;
+  /** Excerpt of the message text that matched a search; absent when the title matched. */
+  snippet?: string | null;
   created_at: string;
   updated_at: string;
 }
 
+export type Rating = "up" | "down";
+
 export interface Turn {
+  /** Absent on responses from an older backend. */
+  id?: string;
+  created_at?: string;
+  feedback?: Rating | null;
   user_message: string;
   model_response: string;
   model_version: string;
@@ -148,11 +161,41 @@ export function getHealth(): Promise<Health> {
   return request("/health");
 }
 
-export async function listSessions(query?: string): Promise<SessionSummary[]> {
-  const qs = query?.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
-  const list = await request<SessionSummary[]>(`/api/sessions${qs}`);
+export interface ListOptions {
+  query?: string;
+  archived?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+/** Page size for the sidebar; the backend caps it at 100. */
+export const SESSIONS_PAGE_SIZE = 30;
+
+export async function listSessions(
+  options: string | ListOptions = {},
+  signal?: AbortSignal
+): Promise<SessionSummary[]> {
+  const { query, archived, limit, offset }: ListOptions =
+    typeof options === "string" ? { query: options } : options;
+  const params = new URLSearchParams();
+  if (query?.trim()) params.set("q", query.trim());
+  if (archived) params.set("archived", "true");
+  if (limit !== undefined) params.set("limit", String(limit));
+  if (offset) params.set("offset", String(offset));
+  const qs = params.toString();
+  const list = await request<SessionSummary[]>(
+    `/api/sessions${qs ? `?${qs}` : ""}`,
+    signal ? { signal } : undefined
+  );
   ensure(Array.isArray(list));
   return list;
+}
+
+/** An empty conversation, so a new chat can be shared or renamed before its first message. */
+export async function createSession(): Promise<SessionSummary> {
+  const created = await request<SessionSummary>("/api/sessions", { method: "POST" });
+  ensure(typeof created?.id === "string");
+  return created;
 }
 
 export async function getSession(id: string): Promise<SessionDetail> {
@@ -163,7 +206,7 @@ export async function getSession(id: string): Promise<SessionDetail> {
 
 export function updateSession(
   id: string,
-  changes: { title?: string; pinned?: boolean }
+  changes: { title?: string; pinned?: boolean; archived?: boolean }
 ): Promise<SessionSummary> {
   return request(`/api/sessions/${id}`, jsonInit("PATCH", changes));
 }
@@ -174,4 +217,50 @@ export function renameSession(id: string, title: string): Promise<SessionSummary
 
 export function deleteSession(id: string): Promise<void> {
   return request(`/api/sessions/${id}`, { method: "DELETE" });
+}
+
+export function setArchived(id: string, archived: boolean): Promise<SessionSummary> {
+  return updateSession(id, { archived });
+}
+
+export function setFeedback(sessionId: string, turnId: string, rating: Rating | null) {
+  return request<{ turn_id: string; rating: Rating | null }>(
+    `/api/sessions/${sessionId}/turns/${turnId}/feedback`,
+    jsonInit("PUT", { rating })
+  );
+}
+
+export interface ShareState {
+  enabled: boolean;
+  token: string | null;
+  shared_at: string | null;
+}
+
+export function getShare(id: string): Promise<ShareState> {
+  return request(`/api/sessions/${id}/share`);
+}
+
+export function enableShare(id: string, rotate = false): Promise<ShareState> {
+  return request(`/api/sessions/${id}/share`, jsonInit("POST", { rotate }));
+}
+
+export function revokeShare(id: string): Promise<void> {
+  return request(`/api/sessions/${id}/share`, { method: "DELETE" });
+}
+
+export interface SharedConversation {
+  title: string;
+  shared_at: string | null;
+  turns: { user_message: string; model_response: string; created_at: string }[];
+}
+
+export async function getShared(token: string): Promise<SharedConversation> {
+  const shared = await request<SharedConversation>(`/api/shared/${encodeURIComponent(token)}`);
+  ensure(typeof shared?.title === "string" && Array.isArray(shared?.turns));
+  return shared;
+}
+
+/** The URL a reader opens for a share token. */
+export function shareUrl(token: string): string {
+  return `${window.location.origin}/s/${token}`;
 }
