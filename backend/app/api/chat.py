@@ -25,7 +25,7 @@ async def chat(
 ) -> ChatResponse:
     service = ConversationService(db, inference_client)
     try:
-        session_id, result = await service.handle_message(
+        session_id, turn_id, result = await service.handle_message(
             req.session_id, req.message, req.replace_from_turn
         )
     except InvalidTurnIndex as exc:
@@ -43,6 +43,7 @@ async def chat(
 
     return ChatResponse(
         session_id=session_id,
+        turn_id=turn_id,
         response=result.text,
         serving_condition=settings.default_serving_condition,
         model_version=result.model_version,
