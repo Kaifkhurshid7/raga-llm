@@ -31,8 +31,8 @@ class ConversationService:
         session_id: Optional[str],
         message: str,
         replace_from_turn: Optional[int] = None,
-    ) -> Tuple[str, GenerationResult]:
-        """Answer `message` in a session.
+    ) -> Tuple[str, str, GenerationResult]:
+        """Answer `message` in a session. Returns `(session_id, turn_id, result)`.
 
         With `replace_from_turn=k`, the model sees only the first k turns, and on success turn k
         and everything after it is replaced by the new turn. If generation fails nothing is
@@ -55,24 +55,24 @@ class ConversationService:
 
         for stale in turns[keep:]:
             self.db.delete(stale)
-        self.db.add(
-            Turn(
-                session_id=session.id,
-                user_message=message,
-                model_response=result.text,
-                serving_condition=settings.default_serving_condition,
-                model_version=result.model_version,
-                decoding_config=result.decoding_config,
-                prompt_tokens=result.prompt_tokens,
-                output_tokens=result.output_tokens,
-            )
+        turn = Turn(
+            session_id=session.id,
+            user_message=message,
+            model_response=result.text,
+            serving_condition=settings.default_serving_condition,
+            model_version=result.model_version,
+            decoding_config=result.decoding_config,
+            prompt_tokens=result.prompt_tokens,
+            output_tokens=result.output_tokens,
         )
-        if keep == 0 or not session.title:
+        self.db.add(turn)
+        # A title the user chose for a still-empty conversation is kept; otherwise the first turn names it.
+        if not session.title or (keep == 0 and turns):
             session.title = derive_title(message)
         session.updated_at = datetime.now(timezone.utc)
         self.db.commit()
 
-        return session.id, result
+        return session.id, turn.id, result
 
     def _get_or_create_session(self, session_id: Optional[str]) -> SessionModel:
         if session_id:
