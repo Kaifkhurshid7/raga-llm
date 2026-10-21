@@ -22,8 +22,20 @@ class Session(Base):
     id = Column(String, primary_key=True, default=_uuid)
     title = Column(String, nullable=True)
     pinned = Column(Boolean, nullable=False, default=False, server_default=false())
+    archived_at = Column(DateTime, nullable=True)
+    # Opaque public-link secret; NULL means the conversation is not shared.
+    share_token = Column(String, nullable=True, unique=True, index=True)
+    shared_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=_now)
     updated_at = Column(DateTime, default=_now)
+
+    @property
+    def archived(self) -> bool:
+        return self.archived_at is not None
+
+    @property
+    def shared(self) -> bool:
+        return bool(self.share_token)
 
     turns = relationship(
         "Turn",
@@ -49,6 +61,10 @@ class Turn(Base):
     decoding_config = Column(JSON, nullable=False)
     prompt_tokens = Column(Integer, nullable=True)
     output_tokens = Column(Integer, nullable=True)
+
+    # "up" or "down"; NULL when the user has not rated this answer.
+    feedback = Column(String, nullable=True)
+    feedback_at = Column(DateTime, nullable=True)
 
     created_at = Column(DateTime, default=_now)
 
