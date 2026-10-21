@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Message } from "../lib/types";
 import EvidencePanel from "./evidence/EvidencePanel";
-import { CheckIcon, CopyIcon, PencilIcon, RefreshIcon } from "./icons";
+import {
+  CheckIcon,
+  CopyIcon,
+  PencilIcon,
+  RefreshIcon,
+  ThumbsDownIcon,
+  ThumbsUpIcon,
+} from "./icons";
 import Markdown from "./Markdown";
+import { useToast } from "./Toast";
 
 interface Props extends Message {
   /** False while a request is in flight; edit and regenerate are hidden then. */
@@ -11,6 +19,10 @@ interface Props extends Message {
   onEdit?: (text: string) => void;
   /** Present on the latest assistant message: answer the same question again. */
   onRegenerate?: () => void;
+  /** Present when the answer can be rated; null clears the rating. */
+  onFeedback?: (rating: "up" | "down" | null) => void;
+  /** A rating request for this answer is in flight. */
+  feedbackBusy?: boolean;
 }
 
 const COPIED_RESET_MS = 1800;
@@ -22,13 +34,25 @@ function ActionButton({
   label,
   onClick,
   children,
+  pressed,
+  disabled,
 }: {
   label: string;
   onClick: () => void;
   children: ReactNode;
+  pressed?: boolean;
+  disabled?: boolean;
 }) {
   return (
-    <button type="button" onClick={onClick} aria-label={label} title={label} className={actionClass}>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={pressed}
+      disabled={disabled}
+      title={label}
+      className={`${actionClass} disabled:opacity-40 ${pressed ? "text-ink" : ""}`}
+    >
       {children}
     </button>
   );
@@ -129,7 +153,11 @@ export default function ChatMessage({
   canAct,
   onEdit,
   onRegenerate,
+  feedback,
+  onFeedback,
+  feedbackBusy,
 }: Props) {
+  const toast = useToast();
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -141,8 +169,9 @@ export default function ChatMessage({
       setCopied(true);
       clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(false), COPIED_RESET_MS);
+      toast("Answer copied", { kind: "success" });
     } catch {
-      /* clipboard unavailable; leave the button unchanged */
+      toast("Couldn't copy to the clipboard.", { kind: "error" });
     }
   }
 
@@ -160,6 +189,26 @@ export default function ChatMessage({
           <ActionButton label="Regenerate response" onClick={onRegenerate}>
             <RefreshIcon className="h-4 w-4" />
           </ActionButton>
+        )}
+        {onFeedback && (
+          <>
+            <ActionButton
+              label="Good response"
+              pressed={feedback === "up"}
+              disabled={feedbackBusy}
+              onClick={() => onFeedback(feedback === "up" ? null : "up")}
+            >
+              <ThumbsUpIcon className={`h-4 w-4 ${feedback === "up" ? "fill-current" : ""}`} />
+            </ActionButton>
+            <ActionButton
+              label="Bad response"
+              pressed={feedback === "down"}
+              disabled={feedbackBusy}
+              onClick={() => onFeedback(feedback === "down" ? null : "down")}
+            >
+              <ThumbsDownIcon className={`h-4 w-4 ${feedback === "down" ? "fill-current" : ""}`} />
+            </ActionButton>
+          </>
         )}
         {modelVersion && <span className="ml-1">{modelVersion}</span>}
       </div>
