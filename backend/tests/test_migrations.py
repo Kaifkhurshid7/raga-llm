@@ -33,7 +33,16 @@ def test_adds_missing_columns_and_backfills_activity_time(tmp_path):
 
     applied = upgrade_schema(engine)
 
-    assert applied == ["sessions.title", "sessions.updated_at", "sessions.pinned"]
+    assert applied == [
+        "sessions.title",
+        "sessions.updated_at",
+        "sessions.pinned",
+        "sessions.archived_at",
+        "sessions.share_token",
+        "sessions.shared_at",
+        "turns.feedback",
+        "turns.feedback_at",
+    ]
     assert {"title", "updated_at", "pinned"} <= {c["name"] for c in inspect(engine).get_columns("sessions")}
     with engine.connect() as conn:
         row = conn.exec_driver_sql("SELECT updated_at FROM sessions").fetchone()

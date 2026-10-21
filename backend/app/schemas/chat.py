@@ -31,6 +31,7 @@ class ChatResponse(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
     session_id: str
+    turn_id: str
     response: str
     serving_condition: str
     model_version: str
