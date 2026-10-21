@@ -13,6 +13,10 @@ interface Props {
   onEdit: (turnIndex: number, text: string) => void;
   /** Answer the question at this turn index again. */
   onRegenerate: (turnIndex: number) => void;
+  /** Rate the answer at this turn index; null clears the rating. */
+  onFeedback?: (turnIndex: number, rating: "up" | "down" | null) => void;
+  /** Turn ids whose rating request is in flight. */
+  feedbackBusy?: ReadonlySet<string>;
 }
 
 function ThinkingIndicator() {
@@ -40,7 +44,14 @@ function prefersReducedMotion(): boolean {
 /** Messages alternate user, assistant, so message index i belongs to turn floor(i / 2). */
 const turnOf = (messageIndex: number) => Math.floor(messageIndex / 2);
 
-export default function MessageList({ messages, generating, onEdit, onRegenerate }: Props) {
+export default function MessageList({
+  messages,
+  generating,
+  onEdit,
+  onRegenerate,
+  onFeedback,
+  feedbackBusy,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 
@@ -83,6 +94,12 @@ export default function MessageList({ messages, generating, onEdit, onRegenerate
               onRegenerate={
                 m.role === "assistant" && i === lastAssistant ? () => onRegenerate(turnOf(i)) : undefined
               }
+              onFeedback={
+                m.role === "assistant" && m.turnId && onFeedback
+                  ? (rating) => onFeedback(turnOf(i), rating)
+                  : undefined
+              }
+              feedbackBusy={m.turnId ? feedbackBusy?.has(m.turnId) : false}
             />
           </div>
         ))}

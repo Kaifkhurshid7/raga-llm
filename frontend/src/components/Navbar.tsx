@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { Theme } from "../hooks/useTheme";
+import HeaderActions from "./HeaderActions";
 import { ArrowLeftIcon, MenuIcon, MoonIcon, SunIcon } from "./icons";
 
 interface Props {
@@ -13,6 +14,8 @@ interface Props {
   onOpenMenu: () => void;
   /** When set, a back button is shown before the title. */
   onBack?: () => void;
+  /** Present when a saved conversation is open: adds Share and the options menu. */
+  actions?: Omit<React.ComponentProps<typeof HeaderActions>, "onRename">;
 }
 
 const iconButton =
@@ -28,6 +31,7 @@ export default function Navbar({
   showMenuButton,
   onOpenMenu,
   onBack,
+  actions,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
@@ -98,6 +102,8 @@ export default function Navbar({
           {badge}
         </span>
       )}
+
+      {actions && <HeaderActions {...actions} onRename={startEditing} />}
 
       <button
         type="button"
