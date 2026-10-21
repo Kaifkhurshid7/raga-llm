@@ -1,22 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ChatPanel from "./components/ChatPanel";
-import SettingsPage from "./components/SettingsPage";
 import Navbar from "./components/Navbar";
-import Sidebar from "./components/Sidebar";
+import SettingsPage from "./components/SettingsPage";
+import Sidebar, { type SessionsStatus, type SidebarNotice } from "./components/Sidebar";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useProfile } from "./hooks/useProfile";
 import { useTheme } from "./hooks/useTheme";
 import {
   ApiError,
+  deleteSession,
   getHealth,
+  type Health,
   getSession,
   isAbortError,
   listSessions,
-  renameSession,
   sendMessage,
+  updateSession,
   type SessionSummary,
 } from "./lib/api";
 import { readStorage, writeStorage } from "./lib/storage";
+import { formatTranscript } from "./lib/transcript";
 import type { Message } from "./lib/types";
 
 const SESSIONS_CACHE_KEY = "raga.sessions";
@@ -34,6 +37,8 @@ export default function App() {
   const [sessions, setSessions] = useState<SessionSummary[]>(() =>
     readStorage<SessionSummary[]>(SESSIONS_CACHE_KEY, [])
   );
+  const [sessionsStatus, setSessionsStatus] = useState<SessionsStatus>("loading");
+  const [sidebarNotice, setSidebarNotice] = useState<SidebarNotice | null>(null);
   const [query, setQuery] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     readStorage(SIDEBAR_COLLAPSED_KEY, false)
@@ -46,6 +51,8 @@ export default function App() {
   const [draft, setDraft] = useState("");
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The failed request that Retry repeats. For a plain send the text is back in the draft.
+  const [retryAttempt, setRetryAttempt] = useState<{ text: string; replace?: number } | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const restoreDraftOnAbort = useRef(false);
@@ -56,14 +63,16 @@ export default function App() {
   // Load (and search) the session list from the backend.
   useEffect(() => {
     let cancelled = false;
+    setSessionsStatus((prev) => (prev === "ready" ? "ready" : "loading"));
     const timer = setTimeout(async () => {
       try {
         const list = await listSessions(query);
         if (cancelled) return;
         setSessions(list);
+        setSessionsStatus("ready");
         if (!query.trim()) writeStorage(SESSIONS_CACHE_KEY, list);
       } catch {
-        /* keep the cached list when the backend is unreachable */
+        if (!cancelled) setSessionsStatus("error");
       }
     }, query ? SEARCH_DEBOUNCE_MS : 0);
     return () => {
@@ -74,17 +83,21 @@ export default function App() {
 
   useEffect(() => writeStorage(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed), [sidebarCollapsed]);
 
-  // Serving condition before the first reply, so the badge is never empty.
-  const [defaultBadge, setDefaultBadge] = useState<string | null>(null);
+  const [health, setHealth] = useState<Health | null>(null);
   useEffect(() => {
     getHealth()
-      .then((h) =>
-        setDefaultBadge(
-          [h.mock_inference ? "mock" : null, h.serving_condition].filter(Boolean).join(" · ")
-        )
-      )
+      .then(setHealth)
       .catch(() => undefined);
   }, []);
+
+  // Serving condition before the first reply, so the badge is never empty.
+  const defaultBadge = useMemo(
+    () =>
+      health
+        ? [health.mock_inference ? "mock" : null, health.serving_condition].filter(Boolean).join(" · ")
+        : null,
+    [health]
+  );
 
   const badge = useMemo(() => {
     const last = [...messages].reverse().find((m) => m.role === "assistant");
@@ -102,6 +115,7 @@ export default function App() {
   function resetConversation() {
     abortInFlight(false);
     setError(null);
+    setRetryAttempt(null);
     setDraft("");
   }
 
@@ -134,6 +148,7 @@ export default function App() {
             content: t.model_response,
             modelVersion: t.model_version,
             servingCondition: t.serving_condition,
+            evidence: t.evidence,
           },
         ])
       );
@@ -142,24 +157,36 @@ export default function App() {
     }
   }
 
-  async function handleSend() {
-    const text = draft.trim();
+  /**
+   * Sends `override` (a suggestion) or the draft. With `replaceFromTurn`, that turn and everything
+   * after it is replaced (regenerate and edit). On failure the conversation and the typed text are
+   * restored, and the server leaves its copy unchanged, so nothing is lost.
+   */
+  async function handleSend(override?: string, replaceFromTurn?: number) {
+    const text = (override ?? draft).trim();
     if (!text || generating) return;
 
+    const replacing = replaceFromTurn !== undefined;
+    const previous = messages;
     const controller = new AbortController();
     abortRef.current = controller;
     restoreDraftOnAbort.current = false;
 
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
-    setDraft("");
+    setView("chat");
+    setMessages([
+      ...(replacing ? messages.slice(0, replaceFromTurn * 2) : messages),
+      { role: "user", content: text },
+    ]);
+    if (!replacing) setDraft("");
     setGenerating(true);
     setError(null);
+    setRetryAttempt(null);
 
     try {
-      const res = await sendMessage(text, activeId, controller.signal);
+      const res = await sendMessage(text, activeId, controller.signal, replaceFromTurn);
       if (controller.signal.aborted) return;
 
-      const isNewSession = !activeId;
+      const retitle = !activeId || replaceFromTurn === 0;
       setActiveId(res.session_id);
       setMessages((prev) => [
         ...prev,
@@ -168,9 +195,10 @@ export default function App() {
           content: res.response,
           modelVersion: res.model_version,
           servingCondition: res.serving_condition,
+          evidence: res.evidence,
         },
       ]);
-      if (isNewSession) {
+      if (retitle) {
         getSession(res.session_id)
           .then((d) => setTitle(d.title))
           .catch(() => undefined);
@@ -179,13 +207,16 @@ export default function App() {
     } catch (e) {
       if (isAbortError(e)) {
         if (restoreDraftOnAbort.current) {
-          setMessages((prev) => prev.slice(0, -1));
-          setDraft(text);
+          setMessages(previous);
+          if (!replacing) setDraft(text);
         }
         return;
       }
       if (controller.signal.aborted) return;
+      setMessages(previous);
+      if (!replacing) setDraft(text);
       setError(e instanceof ApiError ? e.message : "Something went wrong.");
+      setRetryAttempt({ text, replace: replaceFromTurn });
     } finally {
       if (abortRef.current === controller) {
         abortRef.current = null;
@@ -194,26 +225,103 @@ export default function App() {
     }
   }
 
-  async function handleRename(next: string) {
-    if (!activeId) return;
-    const previous = title;
-    setTitle(next);
+  function handleRetry() {
+    if (!retryAttempt) return;
+    if (retryAttempt.replace === undefined) void handleSend();
+    else void handleSend(retryAttempt.text, retryAttempt.replace);
+  }
+
+  function handleDismissError() {
+    setError(null);
+    setRetryAttempt(null);
+  }
+
+  function handleRegenerate(turnIndex: number) {
+    const question = messages[turnIndex * 2]?.content;
+    if (question) void handleSend(question, turnIndex);
+  }
+
+  async function handleRenameSession(id: string, next: string) {
     try {
-      await renameSession(activeId, next);
+      await updateSession(id, { title: next });
+      if (id === activeId) setTitle(next);
       refreshSessions();
-    } catch {
-      setTitle(previous);
+    } catch (e) {
+      notifyError(e, "Couldn't rename the conversation.");
+    }
+  }
+
+  function notifyError(e: unknown, fallback: string) {
+    setSidebarNotice({ text: e instanceof ApiError ? e.message : fallback, kind: "error" });
+  }
+
+  async function handleTogglePin(session: SessionSummary) {
+    const pinned = !session.pinned;
+    setSessions((prev) => prev.map((s) => (s.id === session.id ? { ...s, pinned } : s)));
+    try {
+      await updateSession(session.id, { pinned });
+    } catch (e) {
+      notifyError(e, pinned ? "Couldn't pin the conversation." : "Couldn't unpin the conversation.");
+    }
+    refreshSessions();
+  }
+
+  /** Shares the conversation as text: the system share sheet if there is one, otherwise the clipboard. */
+  async function handleShareSession(session: SessionSummary) {
+    try {
+      const detail = await getSession(session.id);
+      if (detail.turns.length === 0) {
+        setSidebarNotice({ text: "There is nothing in this conversation to share yet.", kind: "info" });
+        return;
+      }
+      const text = formatTranscript(detail.title, detail.turns);
+      if (typeof navigator.share === "function") {
+        try {
+          await navigator.share({ title: detail.title, text });
+          return;
+        } catch (e) {
+          if (isAbortError(e) || (e as { name?: string })?.name === "AbortError") return;
+          /* the share sheet failed; fall back to copying */
+        }
+      }
+      await navigator.clipboard.writeText(text);
+      setSidebarNotice({ text: "Conversation copied to the clipboard.", kind: "info" });
+    } catch (e) {
+      notifyError(e, "Couldn't share the conversation.");
+    }
+  }
+
+  async function handleDeleteSession(id: string) {
+    try {
+      await deleteSession(id);
+      setSessions((prev) => {
+        const next = prev.filter((s) => s.id !== id);
+        writeStorage(SESSIONS_CACHE_KEY, next);
+        return next;
+      });
+      if (id === activeId) handleNewChat();
+      refreshSessions();
+    } catch (e) {
+      notifyError(e, "Couldn't delete the conversation.");
     }
   }
 
   const sidebar = (
     <Sidebar
       sessions={sessions}
+      status={sessionsStatus}
+      onRetry={refreshSessions}
       activeId={activeId}
       query={query}
       onQueryChange={setQuery}
       onSelect={handleSelect}
       onNewChat={handleNewChat}
+      onRenameSession={handleRenameSession}
+      onDeleteSession={handleDeleteSession}
+      onTogglePin={handleTogglePin}
+      onShareSession={handleShareSession}
+      notice={sidebarNotice}
+      onDismissNotice={() => setSidebarNotice(null)}
       collapsed={!isMobile && sidebarCollapsed}
       onToggleCollapsed={() => setSidebarCollapsed((c) => !c)}
       onClose={isMobile ? () => setDrawerOpen(false) : undefined}
@@ -248,7 +356,7 @@ export default function App() {
             <Navbar
               title={SETTINGS_TITLE}
               canRename={false}
-              onRename={handleRename}
+              onRename={() => undefined}
               badge={null}
               theme={theme}
               onToggleTheme={toggleTheme}
@@ -262,6 +370,7 @@ export default function App() {
               theme={theme}
               onToggleTheme={toggleTheme}
               onBack={() => setView("chat")}
+              health={health}
             />
           </>
         ) : (
@@ -269,7 +378,7 @@ export default function App() {
             <Navbar
               title={title}
               canRename={Boolean(activeId)}
-              onRename={handleRename}
+              onRename={(next) => activeId && handleRenameSession(activeId, next)}
               badge={badge}
               theme={theme}
               onToggleTheme={toggleTheme}
@@ -282,8 +391,13 @@ export default function App() {
               error={error}
               draft={draft}
               onDraftChange={setDraft}
-              onSend={handleSend}
+              onSend={() => handleSend()}
               onStop={() => abortInFlight(true)}
+              onPrompt={(q) => handleSend(q)}
+              onEdit={(turnIndex, text) => handleSend(text, turnIndex)}
+              onRegenerate={handleRegenerate}
+              onRetry={retryAttempt ? handleRetry : undefined}
+              onDismissError={handleDismissError}
             />
           </>
         )}
