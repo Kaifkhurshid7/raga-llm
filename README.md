@@ -101,6 +101,33 @@ docker compose --env-file infra/.env up --build db backend frontend
 
 With `USE_MOCK_INFERENCE=true` (the default) the backend returns a mock response, so the full application can be developed and tested without a GPU.
 
+### Run without Docker
+
+Both processes must be running. If the backend is stopped, the UI reports that it can't reach the server.
+
+```bash
+# terminal 1: backend (uses SQLite via backend/.env; see infra/.env.example for the variables)
+cd backend
+python -m venv .venv && .venv/Scripts/activate        # macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+printf 'DATABASE_URL=sqlite:///./raga_dev.db\nUSE_MOCK_INFERENCE=true\n' > .env
+uvicorn app.main:app --reload
+
+# terminal 2: frontend
+cd frontend
+npm install
+npm run dev
+```
+
+Databases created by earlier versions are upgraded automatically on startup.
+
+### Tests
+
+```bash
+cd backend && pip install -r requirements-dev.txt && pytest
+cd frontend && npm run typecheck && npm test
+```
+
 ### Inference service (GPU host)
 
 ```bash
