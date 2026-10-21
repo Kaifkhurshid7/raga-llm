@@ -6,7 +6,7 @@ interface Props {
   children: string;
 }
 
-/** Renders assistant replies. Emphasised terms (raga names) use the serif face. */
+/** Renders assistant replies: headings, lists, tables, links and code blocks. */
 export default function Markdown({ children }: Props) {
   return (
     <div className="markdown">
@@ -14,12 +14,16 @@ export default function Markdown({ children }: Props) {
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
         components={{
-          strong: ({ children }) => <strong className="font-serif font-semibold">{children}</strong>,
-          em: ({ children }) => <em className="font-serif">{children}</em>,
           a: ({ children, href }) => (
             <a href={href} target="_blank" rel="noopener noreferrer">
               {children}
             </a>
+          ),
+          // Wide tables scroll inside the message instead of overflowing the page.
+          table: ({ children }) => (
+            <div className="my-3 overflow-x-auto">
+              <table>{children}</table>
+            </div>
           ),
         }}
       >
