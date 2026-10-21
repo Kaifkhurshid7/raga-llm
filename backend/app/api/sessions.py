@@ -1,4 +1,4 @@
-"""Session endpoints: list, fetch, rename, delete."""
+"""Session endpoints: list, fetch, update (rename, pin), delete."""
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.core.session_service import SessionService
 from app.db.session import get_db
-from app.schemas.session import SessionDetail, SessionRename, SessionSummary
+from app.schemas.session import SessionDetail, SessionSummary, SessionUpdate
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -32,10 +32,10 @@ def get_session(session_id: str, db: DBSession = Depends(get_db)):
 
 
 @router.patch("/{session_id}", response_model=SessionSummary)
-def rename_session(
-    session_id: str, body: SessionRename, db: DBSession = Depends(get_db)
+def update_session(
+    session_id: str, body: SessionUpdate, db: DBSession = Depends(get_db)
 ):
-    session = SessionService(db).rename(session_id, body.title)
+    session = SessionService(db).update(session_id, title=body.title, pinned=body.pinned)
     if session is None:
         raise _not_found()
     return session

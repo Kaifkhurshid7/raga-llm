@@ -1,18 +1,28 @@
 """Application entrypoint."""
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.chat import router as chat_router
 from app.api.sessions import router as sessions_router
 from app.core.config import settings
-from app.db.session import Base, engine
+from app.core.session_service import SessionService
+from app.db.migrations import upgrade_schema
+from app.db.session import Base, SessionLocal, engine
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    upgrade_schema(engine)
+    with SessionLocal() as db:
+        SessionService(db).backfill_titles()
     yield
 
 
@@ -27,6 +37,12 @@ app.add_middleware(
 
 app.include_router(chat_router)
 app.include_router(sessions_router)
+
+
+@app.exception_handler(SQLAlchemyError)
+async def database_error_handler(_: Request, exc: SQLAlchemyError) -> JSONResponse:
+    logger.exception("Database error", exc_info=exc)
+    return JSONResponse(status_code=503, content={"detail": "Database unavailable."})
 
 
 @app.get("/health", tags=["meta"])
