@@ -1,9 +1,13 @@
 import { useLayoutEffect, useRef, type KeyboardEvent } from "react";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { ArrowUpIcon } from "./icons";
 import StopButton from "./StopButton";
 
 const MAX_HEIGHT_PX = 168; // about six lines
 const MAX_LENGTH = 2000;
+const PLACEHOLDER = "Ask about a raga, taal, or musical concept...";
+// The full text does not fit on one line on very narrow screens.
+const COMPACT_PLACEHOLDER = "Ask about a raga or taal...";
 
 interface Props {
   value: string;
@@ -15,6 +19,7 @@ interface Props {
 
 export default function InputBar({ value, onChange, onSubmit, onStop, generating }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const narrow = useMediaQuery("(max-width: 420px)");
   const hasText = value.trim().length > 0;
   const canSend = hasText && !generating;
 
@@ -34,18 +39,18 @@ export default function InputBar({ value, onChange, onSubmit, onStop, generating
   }
 
   return (
-    <div className="px-4 pb-4 pt-2">
-      <div className="flex items-end gap-2 rounded-2xl border border-line bg-raised px-4 py-2 transition-colors duration-150 focus-within:border-faint">
+    <div className="px-4 pb-4 pt-2 sm:px-6 sm:pb-5">
+      <div className="flex items-end gap-3 rounded-[22px] border border-line bg-raised py-2 pl-5 pr-2 transition-[border-color,box-shadow] duration-150 focus-within:border-accent/60 focus-within:shadow-[0_0_0_3px_rgb(var(--accent)/0.12)]">
         <textarea
           ref={ref}
           rows={1}
           value={value}
           maxLength={MAX_LENGTH}
-          placeholder="Ask about a raga, taal, or musical concept..."
+          placeholder={narrow ? COMPACT_PLACEHOLDER : PLACEHOLDER}
           aria-label="Message"
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          className="max-h-[168px] flex-1 resize-none bg-transparent py-1.5 text-[15px] leading-6 outline-none placeholder:text-faint"
+          className="max-h-[168px] flex-1 resize-none bg-transparent py-1.5 text-[15px] leading-6 outline-none placeholder:overflow-hidden placeholder:text-ellipsis placeholder:whitespace-nowrap placeholder:text-faint"
         />
 
         <div className="relative h-9 w-9 shrink-0">
@@ -68,7 +73,7 @@ export default function InputBar({ value, onChange, onSubmit, onStop, generating
           <StopButton onClick={onStop} visible={generating} />
         </div>
       </div>
-      <p className="mt-2 text-center text-xs text-faint">
+      <p className="mt-2.5 text-center text-[13px] leading-5 text-faint">
         Research assistant · Verify important musicological details against trusted sources.
       </p>
     </div>
