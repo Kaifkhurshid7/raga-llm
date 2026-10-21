@@ -14,6 +14,16 @@ from sqlalchemy.engine import Engine
 logger = logging.getLogger(__name__)
 
 
+# Columns added after the first release: (table, column, DDL type; `{dt}` is the datetime type).
+_LATER_COLUMNS = [
+    ("sessions", "archived_at", "{dt}"),
+    ("sessions", "share_token", "VARCHAR"),
+    ("sessions", "shared_at", "{dt}"),
+    ("turns", "feedback", "VARCHAR"),
+    ("turns", "feedback_at", "{dt}"),
+]
+
+
 def upgrade_schema(engine: Engine) -> List[str]:
     """Add columns the models expect but the database lacks. Returns what was changed."""
     inspector = inspect(engine)
@@ -35,6 +45,17 @@ def upgrade_schema(engine: Engine) -> List[str]:
             default = "0" if engine.dialect.name == "sqlite" else "FALSE"
             conn.execute(text(f"ALTER TABLE sessions ADD COLUMN pinned BOOLEAN NOT NULL DEFAULT {default}"))
             applied.append("sessions.pinned")
+
+        for table, column, ddl in _LATER_COLUMNS:
+            if not inspector.has_table(table):
+                continue
+            have = {c["name"] for c in inspector.get_columns(table)}
+            if column not in have:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl.format(dt=datetime_type)}"))
+                applied.append(f"{table}.{column}")
+        conn.execute(
+            text("CREATE UNIQUE INDEX IF NOT EXISTS ix_sessions_share_token ON sessions (share_token)")
+        )
 
         # Old rows: last activity is the newest turn, or the creation time.
         conn.execute(
