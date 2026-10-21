@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import type { Theme } from "../hooks/useTheme";
+import type { Health } from "../lib/api";
 import {
   BACKGROUNDS,
   LIMITS,
@@ -15,7 +16,15 @@ interface Props {
   theme: Theme;
   onToggleTheme: () => void;
   onBack: () => void;
+  /** Server status from /health, or null if it could not be read. */
+  health: Health | null;
 }
+
+const SHORTCUTS: [string, string][] = [
+  ["Enter", "Send message"],
+  ["Shift + Enter", "New line"],
+  ["Esc", "Cancel editing, close dialogs, leave settings"],
+];
 
 const inputClass =
   "w-full rounded-lg border border-line bg-page px-3 py-2 text-sm outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-faint focus:border-accent focus:shadow-[0_0_0_3px_rgb(var(--accent)/0.15)]";
@@ -92,7 +101,14 @@ function Segmented<T extends string>({ label, options, value, onChange }: Segmen
   );
 }
 
-export default function SettingsPage({ profile, onSave, theme, onToggleTheme, onBack }: Props) {
+export default function SettingsPage({
+  profile,
+  onSave,
+  theme,
+  onToggleTheme,
+  onBack,
+  health,
+}: Props) {
   const [draft, setDraft] = useState<Profile>(profile);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -152,7 +168,7 @@ export default function SettingsPage({ profile, onSave, theme, onToggleTheme, on
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[640px] animate-hero-in space-y-8 px-4 py-8">
           <header>
-            <h1 className="font-serif text-2xl">Settings</h1>
+            <h1 className="text-xl font-semibold">Settings</h1>
             <p className="mt-1 text-sm text-muted">
               Manage your profile and appearance. Stored in this browser only.
             </p>
@@ -274,6 +290,49 @@ export default function SettingsPage({ profile, onSave, theme, onToggleTheme, on
                 onChange={(t) => t !== theme && onToggleTheme()}
               />
             </div>
+          </Card>
+
+          <Card title="Keyboard shortcuts">
+            <dl className="divide-y divide-line text-sm">
+              {SHORTCUTS.map(([keys, action]) => (
+                <div key={action} className="flex items-center justify-between gap-4 px-5 py-3">
+                  <dt className="text-muted">{action}</dt>
+                  <dd>
+                    <kbd className="rounded border border-line bg-page px-1.5 py-0.5 font-sans text-xs">
+                      {keys}
+                    </kbd>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </Card>
+
+          <Card title="Privacy and data">
+            <ul className="space-y-2 p-5 text-sm text-muted">
+              <li>
+                Conversations are stored in the database of the backend you run, and are sent to its
+                inference service to generate answers.
+              </li>
+              <li>Your profile and theme are stored only in this browser.</li>
+              <li>Delete a conversation from the sidebar menu to remove it from the database.</li>
+            </ul>
+          </Card>
+
+          <Card title="Application">
+            {health ? (
+              <dl className="divide-y divide-line text-sm">
+                <div className="flex items-center justify-between gap-4 px-5 py-3">
+                  <dt className="text-muted">Serving condition</dt>
+                  <dd>{health.serving_condition}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-4 px-5 py-3">
+                  <dt className="text-muted">Responses</dt>
+                  <dd>{health.mock_inference ? "Mock (no model connected)" : "Live inference service"}</dd>
+                </div>
+              </dl>
+            ) : (
+              <p className="p-5 text-sm text-muted">Couldn't read the server status.</p>
+            )}
           </Card>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { Message } from "../lib/types";
 import ChatMessage from "./ChatMessage";
 
@@ -9,7 +9,10 @@ const MAX_STAGGERED = 6;
 interface Props {
   messages: Message[];
   generating: boolean;
-  error: string | null;
+  /** Replace the turn at this index with a new message (edit-and-resubmit). */
+  onEdit: (turnIndex: number, text: string) => void;
+  /** Answer the question at this turn index again. */
+  onRegenerate: (turnIndex: number) => void;
 }
 
 function ThinkingIndicator() {
@@ -34,15 +37,12 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export default function MessageList({ messages, generating, error }: Props) {
+/** Messages alternate user, assistant, so message index i belongs to turn floor(i / 2). */
+const turnOf = (messageIndex: number) => Math.floor(messageIndex / 2);
+
+export default function MessageList({ messages, generating, onEdit, onRegenerate }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
-  // The hero fades in once, on first load, and not when returning to an empty chat.
-  const [introPlayed, setIntroPlayed] = useState(false);
-
-  useEffect(() => {
-    if (messages.length > 0) setIntroPlayed(true);
-  }, [messages.length]);
 
   function handleScroll() {
     const el = containerRef.current;
@@ -54,7 +54,8 @@ export default function MessageList({ messages, generating, error }: Props) {
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    // A message the user just sent always scrolls into view.
+    // A message the user just sent always scrolls into view; otherwise only follow
+    // new content while the reader is already at the bottom.
     if (messages[messages.length - 1]?.role === "user") stickToBottom.current = true;
     if (stickToBottom.current) {
       el.scrollTo({
@@ -62,38 +63,30 @@ export default function MessageList({ messages, generating, error }: Props) {
         behavior: prefersReducedMotion() ? "auto" : "smooth",
       });
     }
-  }, [messages, generating, error]);
+  }, [messages, generating]);
+
+  const lastAssistant = messages.length - 1;
 
   return (
     <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
-      <div
-        className="mx-auto flex min-h-full max-w-[760px] flex-col gap-6 px-4 py-6"
-        aria-live="polite"
-      >
-        {messages.length === 0 && (
-          <div className={`my-auto text-center ${introPlayed ? "" : "animate-hero-in"}`}>
-            <h2 className="font-serif text-3xl">Ask about a raga.</h2>
-            <p className="mx-auto mt-3 max-w-md text-sm text-muted">
-              Vadi, samvadi, thaat, aroha, avaroha — ask anything, and I'll say when I'm not
-              sure.
-            </p>
-          </div>
-        )}
+      <div className="mx-auto flex max-w-[760px] flex-col gap-6 px-4 py-6" aria-live="polite">
         {messages.map((m, i) => (
           <div
             key={i}
             className="animate-message-in"
             style={{ animationDelay: `${Math.min(i, MAX_STAGGERED) * STAGGER_MS}ms` }}
           >
-            <ChatMessage {...m} />
+            <ChatMessage
+              {...m}
+              canAct={!generating}
+              onEdit={m.role === "user" ? (text) => onEdit(turnOf(i), text) : undefined}
+              onRegenerate={
+                m.role === "assistant" && i === lastAssistant ? () => onRegenerate(turnOf(i)) : undefined
+              }
+            />
           </div>
         ))}
         {generating && <ThinkingIndicator />}
-        {error && (
-          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-            {error}
-          </p>
-        )}
       </div>
     </div>
   );
