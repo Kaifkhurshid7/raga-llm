@@ -41,7 +41,7 @@ export default function InputBar({ value, onChange, onSubmit, onStop, generating
           rows={1}
           value={value}
           maxLength={MAX_LENGTH}
-          placeholder="Ask about a raga, taal, or term…"
+          placeholder="Ask about a raga, taal, or musical concept..."
           aria-label="Message"
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -69,7 +69,7 @@ export default function InputBar({ value, onChange, onSubmit, onStop, generating
         </div>
       </div>
       <p className="mt-2 text-center text-xs text-faint">
-        RAGA is built to say "I'm not sure" rather than guess. Double-check anything important.
+        Research assistant · Verify important musicological details against trusted sources.
       </p>
     </div>
   );
