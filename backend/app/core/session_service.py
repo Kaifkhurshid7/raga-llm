@@ -1,4 +1,4 @@
-"""Session queries: listing, searching, renaming, deleting."""
+"""Session queries: listing, searching, updating, deleting."""
 from typing import List, Optional
 
 from sqlalchemy import exists, or_, select
@@ -26,7 +26,7 @@ class SessionService:
         self.db = db
 
     def list_sessions(self, query: Optional[str] = None) -> List[SessionModel]:
-        """Sessions that have at least one turn, most recently active first."""
+        """Sessions that have at least one turn: pinned first, then most recently active."""
         stmt = select(SessionModel).where(
             exists().where(Turn.session_id == SessionModel.id)
         )
@@ -44,17 +44,26 @@ class SessionService:
                     ),
                 )
             )
-        stmt = stmt.order_by(SessionModel.updated_at.desc())
+        stmt = stmt.order_by(SessionModel.pinned.desc(), SessionModel.updated_at.desc())
         return list(self.db.scalars(stmt))
 
     def get(self, session_id: str) -> Optional[SessionModel]:
         return self.db.get(SessionModel, session_id)
 
-    def rename(self, session_id: str, title: str) -> Optional[SessionModel]:
+    def update(
+        self,
+        session_id: str,
+        title: Optional[str] = None,
+        pinned: Optional[bool] = None,
+    ) -> Optional[SessionModel]:
+        """Rename and/or pin. Neither counts as activity, so `updated_at` is left alone."""
         session = self.get(session_id)
         if session is None:
             return None
-        session.title = title
+        if title is not None:
+            session.title = title
+        if pinned is not None:
+            session.pinned = pinned
         self.db.commit()
         return session
 
@@ -65,3 +74,17 @@ class SessionService:
         self.db.delete(session)
         self.db.commit()
         return True
+
+    def backfill_titles(self) -> int:
+        """Give conversations that predate titles a title from their first message."""
+        stmt = select(SessionModel).where(
+            or_(SessionModel.title.is_(None), SessionModel.title == ""),
+            exists().where(Turn.session_id == SessionModel.id),
+        )
+        updated = 0
+        for session in self.db.scalars(stmt):
+            session.title = derive_title(session.turns[0].user_message)
+            updated += 1
+        if updated:
+            self.db.commit()
+        return updated

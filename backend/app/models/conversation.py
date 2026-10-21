@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, false
 from sqlalchemy.orm import relationship
 
 from app.db.session import Base
@@ -21,6 +21,7 @@ class Session(Base):
 
     id = Column(String, primary_key=True, default=_uuid)
     title = Column(String, nullable=True)
+    pinned = Column(Boolean, nullable=False, default=False, server_default=false())
     created_at = Column(DateTime, default=_now)
     updated_at = Column(DateTime, default=_now)
 
