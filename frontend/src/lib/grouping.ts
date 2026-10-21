@@ -6,7 +6,7 @@ export interface SessionGroup {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const LABELS = ["Today", "Yesterday", "Previous 7 days", "Older"] as const;
+const LABELS = ["Today", "Yesterday", "Last 7 days", "Older"] as const;
 
 function startOfDay(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -20,9 +20,13 @@ function bucket(updatedAt: string, now: Date): number {
   return 3;
 }
 
-/** Groups sessions (already sorted newest first) into date buckets. */
+/** Pinned conversations first, then the rest grouped by how recently they were active. */
 export function groupByDate(sessions: SessionSummary[], now = new Date()): SessionGroup[] {
+  const pinned = sessions.filter((s) => s.pinned);
   const groups: SessionGroup[] = LABELS.map((label) => ({ label, sessions: [] }));
-  for (const s of sessions) groups[bucket(s.updated_at, now)].sessions.push(s);
-  return groups.filter((g) => g.sessions.length > 0);
+  for (const s of sessions) {
+    if (!s.pinned) groups[bucket(s.updated_at, now)].sessions.push(s);
+  }
+  const dated = groups.filter((g) => g.sessions.length > 0);
+  return pinned.length > 0 ? [{ label: "Pinned", sessions: pinned }, ...dated] : dated;
 }
