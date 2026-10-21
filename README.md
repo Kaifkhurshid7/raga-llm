@@ -24,17 +24,21 @@ RAGA is a research and demonstration system that reduces confident fabrication i
 ### Chat application
 
 - **Conversation:** Markdown answers (headings, lists, tables, links, syntax-highlighted code), an auto-growing composer (Enter sends, Shift+Enter adds a line), a thinking indicator, and a stop button that cancels the in-flight request.
-- **Message actions:** copy an answer, regenerate the latest answer, and edit an earlier question and resubmit it. Both replace the affected turn on the server, and a failed attempt leaves the conversation unchanged.
-- **Error handling:** specific, dismissible messages for an unreachable backend, timeouts, server errors, and malformed responses. A failed send keeps what you typed and offers Retry. Failed requests are never replaced with mock responses.
-- **Conversation history:** grouped as Pinned, Today, Yesterday, Last 7 days, and Older. Search matches titles and message content. Each conversation has a menu to rename, pin or unpin, share, or delete (with confirmation).
-- **Sharing:** shares the conversation as plain text through the browser's share sheet, or copies it to the clipboard when none is available. It does not create a public link.
+- **Message actions:** copy an answer, regenerate the latest answer, rate an answer with thumbs up or down (stored on the server, and togglable), edit an earlier question and resubmit it, and copy a single code block. Regenerate and edit replace the affected turn on the server, and a failed attempt leaves the conversation unchanged. Editing an earlier question asks for confirmation first, because it discards the messages after it.
+- **Error handling and notifications:** specific, dismissible messages for an unreachable backend, timeouts, server errors, and malformed responses. A failed send keeps what you typed and offers Retry. Short toasts confirm rename, archive (with Undo), restore, delete, export, copy, and feedback, and appear only after the server confirms the action. Failed actions show an inline Retry. Failed requests are never replaced with mock responses.
+- **Conversation history:** grouped as Pinned, Today, Yesterday, Previous 7 days, and Older, and loaded 30 at a time with "Show more". Search runs on the server over titles and message content (case-insensitive, debounced), shows a matching snippet with the match highlighted, and has loading, empty, error, and clear states. Each conversation has a menu to rename, pin or unpin, share, export (Markdown or PDF), archive, or delete (with confirmation). The same actions are in the top bar of the open conversation, next to a Share button.
+- **Sharing:** off by default. The Share dialog can create a read-only public link with an opaque 192-bit token, replace it with a new one (the old link stops working), and turn sharing off. The link opens a read-only page at `/s/<token>` that shows only the title and the messages. Deleting a conversation disables its link. A new chat can be shared before its first message: the conversation is created on the server first and stays out of the history until it has a message. See [Sharing and its limits](#sharing-and-its-limits).
+- **Export:** a single conversation as Markdown (a download) or PDF (opens the print dialog; choose "Save as PDF"), and every conversation as one JSON file from Settings. Exports contain messages and timestamps only, never system prompts, decoding settings, or token counts.
+- **Archive:** archiving hides a conversation from the history without deleting it. Archived conversations are listed in Settings, where they can be opened, restored, or deleted.
+- **Keyboard shortcuts:** Ctrl/Cmd+Shift+O (new chat), Ctrl/Cmd+K (search), ? (shortcut list), Esc (close a menu or dialog).
 - **Layout:** a collapsible sidebar (remembered between visits), a mobile drawer, light and dark themes, and reduced-motion support.
-- **Settings:** profile (name, photo, bio, email, musical background, location), theme, keyboard shortcuts, privacy notes, and server status. The profile and theme are stored in the browser only.
+- **Settings:** profile (name, photo, bio, email, musical background, location), theme, keyboard shortcuts, archived conversations, data export, privacy notes, and an About section with the app version and server status. The profile and theme are stored in the browser only. There is no sign-out, because there are no accounts.
 - **Evidence components:** a status badge, a key-facts table, and a source list. They render only metadata the API supplies, which it does not yet do (see [Known limitations](#known-limitations)).
 
 ### Backend
 
-- Chat and conversation-management API with persistence in PostgreSQL (SQLite for local development).
+- Chat and conversation-management API (search with snippets, pagination, rename, pin, archive, delete, feedback, public share links) with persistence in PostgreSQL (SQLite for local development).
+- Public share endpoint that returns only message text and timestamps, with no-store and noindex headers and a per-IP rate limit.
 - Mock inference for development without a GPU, selected only by configuration.
 - Clear failure mapping: 422 for invalid input, 502 or 504 when the inference service fails or times out, and 503 when the database is unavailable.
 - Startup schema upgrade for databases created by earlier versions (adds missing columns and backfills titles).
@@ -159,7 +163,7 @@ cd backend && pip install -r requirements-dev.txt && pytest
 cd frontend && npm run typecheck && npm test
 ```
 
-The backend tests use a temporary SQLite database and cover the chat and session endpoints, error mapping, regenerate and edit, pinning, and the schema upgrade. The frontend tests cover the composer, home screen, sidebar and conversation menu, message actions, evidence components, API error handling, and the main application flows. The project has no lint configuration.
+The backend tests use a temporary SQLite database and cover the chat and session endpoints, error mapping, regenerate and edit, pinning, search and pagination, archive and restore, feedback, the full share lifecycle (including that the public payload leaks nothing internal and that rate limiting works), and the schema upgrade. The frontend tests cover the composer, home screen, sidebar and conversation menu, header actions, message actions, search, archive, export, sharing, keyboard shortcuts, the shared page, evidence components, API error handling, and the main application flows. The project has no lint configuration.
 
 ### Inference service (GPU host)
 
@@ -212,18 +216,33 @@ The default database credentials are for local development only and must be chan
 |---|---|
 | `GET /health` | Status, whether mock inference is on, and the serving condition |
 | `POST /api/chat` | Send `{ session_id?, message, replace_from_turn? }`; returns the answer and its metadata |
-| `GET /api/sessions?q=` | List conversations that have at least one turn: pinned first, then by recent activity. `q` searches titles and message content |
-| `GET /api/sessions/{id}` | One conversation with all of its turns |
-| `PATCH /api/sessions/{id}` | Update `{ title?, pinned? }`; send at least one |
-| `DELETE /api/sessions/{id}` | Delete a conversation and its turns |
+| `GET /api/sessions?q=&archived=&limit=&offset=` | List conversations that have at least one turn: pinned first, then by recent activity. `q` searches titles and message content (and returns a `snippet` for content matches); `archived=true` lists archived ones; `limit` is 1 to 100 (default 30) |
+| `POST /api/sessions` | Create an empty conversation (hidden from the list until it has a turn) |
+| `GET /api/sessions/{id}` | One conversation with all of its turns (each with its id, timestamp, and feedback) |
+| `PATCH /api/sessions/{id}` | Update `{ title?, pinned?, archived? }`; send at least one |
+| `DELETE /api/sessions/{id}` | Delete a conversation, its turns, and its share link |
+| `PUT /api/sessions/{id}/turns/{turn_id}/feedback` | Set `{ rating }` to `"up"`, `"down"`, or `null` to clear it |
+| `GET /api/sessions/{id}/share` | Sharing state: `{ enabled, token, shared_at }` |
+| `POST /api/sessions/{id}/share` | Turn sharing on; send `{ rotate: true }` to replace the token |
+| `DELETE /api/sessions/{id}/share` | Turn sharing off |
+| `GET /api/shared/{token}` | Public, read-only: `{ title, shared_at, turns: [{ user_message, model_response, created_at }] }`. 404 for an unknown or revoked token |
 
 `replace_from_turn` is a zero-based turn index used for regenerate and edit. The model sees only the turns before it, and on success that turn and every later turn are replaced by the new one. If generation fails the conversation is unchanged.
 
-Errors return a JSON `detail`. Invalid input returns 422. An inference failure returns 502, a timeout 504, and an unreachable database 503.
+`POST /api/chat` also returns the new turn's `turn_id`, so an answer can be rated without reloading. Request and response details for the conversation endpoints are in [docs/API_CONVERSATIONS.md](docs/API_CONVERSATIONS.md).
+
+Errors return a JSON `detail`. Invalid input returns 422. An inference failure returns 502, a timeout 504, an unreachable database 503, and too many requests to a rate-limited endpoint 429.
+
+### Sharing and its limits
+
+- A share link is a capability: anyone who has it can read that conversation, including people you forward it to. Turning sharing off, replacing the link, or deleting the conversation stops the old link immediately.
+- The token is random and unrelated to any database id. The conversation id is not accepted as a credential.
+- The rate limiter is in memory and per process. Behind several workers or a proxy, also limit requests at the proxy.
+- **There are no accounts, so the server cannot check who owns a conversation.** Anyone who can reach the API can already list, read, rename, share, and delete every conversation. The share token only protects the public read-only endpoint. Per-user ownership needs an authentication layer first.
 
 ## Frontend
 
-React 18, TypeScript, Vite, and Tailwind CSS, with Lucide icons, `react-markdown` for answers, and Vitest with Testing Library for tests. There is no router and no state library; conversation state lives in `App.tsx`, API calls in `src/lib/api.ts`, and presentation in `src/components/`.
+React 18, TypeScript, Vite, and Tailwind CSS, with Lucide icons, `react-markdown` for answers (also used to render the PDF export), and Vitest with Testing Library for tests. There is no router and no state library (the shared page at `/s/<token>` is chosen in `main.tsx` from the URL); conversation state lives in `App.tsx`, API calls in `src/lib/api.ts`, and presentation in `src/components/`.
 
 ```bash
 cd frontend
@@ -238,6 +257,9 @@ npm run build        # type-check and production build
 | Enter | Send message |
 | Shift + Enter | New line |
 | Esc | Cancel editing, close menus and dialogs, leave settings |
+| Ctrl/Cmd + Shift + O | New chat |
+| Ctrl/Cmd + K | Search conversations |
+| ? | Show the shortcut list (not while typing in a field) |
 
 ## Dataset
 
@@ -262,11 +284,13 @@ That is 765 rows, split by fact group into 600 train, 68 validation, and 97 test
 ## Known limitations
 
 - **Evidence metadata:** the API returns no evidence status, key-facts attributes, or source references, so the evidence components show nothing. To use them the API must add an optional `evidence` object to chat responses and turns (`status`: supported, partial, or uncertain; `attributes`: label and value rows; `sources`: title, optional http(s) URL, optional detail). Rows must come from verified records, never from parsing the model's text.
-- **Feedback controls:** there is no endpoint or storage for answer feedback, so thumbs up and down are not shown.
-- **Conversation previews:** the session summary has no preview field, so the sidebar lists titles only.
+- **PDF export:** it goes through the browser's print dialog (choose "Save as PDF"), so the file name and layout options come from the browser, and nothing is downloaded automatically.
+- **Edited or regenerated answers:** the old answers are discarded, not kept as a branch, so there is no way to go back to them.
+- **Feedback:** ratings are stored with each answer but are not used anywhere else yet. There is no free-text comment and no way to report a specific incorrect claim.
+- **Empty conversations:** creating a conversation for Share or Rename before the first message leaves an empty record in the database if the user never sends one. It is hidden from the list but not cleaned up automatically.
 - **Streaming and stop:** answers are not streamed. Stop cancels the browser request only; the server may still finish and store the turn.
 - **Serving condition:** it is a single backend setting. Settings displays it but cannot change it, and there is no per-conversation model choice.
-- **Users:** there is no authentication. All conversations in a backend are visible to every client, and the profile is stored in each browser only.
+- **Users:** there is no authentication. All conversations in a backend are visible to every client, and the profile is stored in each browser only. This is why ownership checks, per-user sharing permissions, and sign-out are not implemented.
 - **Database migrations:** schema changes are applied by a small startup upgrade, not a migration tool. A tool such as Alembic is the long-term answer. The upgrade has been tested on SQLite; it has not been run against a live PostgreSQL instance.
 - **Model work:** fine-tuning and evaluation have not been executed, the RAG retriever is a stub that fails explicitly, and the real inference service has not been connected end to end.
 
@@ -290,6 +314,7 @@ Each stage is a hard gate. Unverified records cannot reach the training split, a
 | Document | Contents |
 |---|---|
 | [docs/PRD.md](docs/PRD.md) | Problem, goals, requirements, success metrics, release plan |
+| [docs/API_CONVERSATIONS.md](docs/API_CONVERSATIONS.md) | Conversation management endpoints: search, archive, feedback, sharing |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layering, service boundaries, technology stack, risks |
 | [docs/WORKFLOW.md](docs/WORKFLOW.md) | Dataset, training, evaluation, and runtime workflows |
 | [dataset/docs/CONVENTIONS.md](dataset/docs/CONVENTIONS.md) | Frozen dataset conventions enforced by the validator |
