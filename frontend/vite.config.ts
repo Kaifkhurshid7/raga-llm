@@ -1,6 +1,8 @@
 import react from "@vitejs/plugin-react";
+import { readFileSync } from "node:fs";
 import { defineConfig } from "vitest/config";
 
+const { version } = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
 const apiTarget = process.env.API_PROXY_TARGET ?? "http://localhost:8000";
 
 /** Proxy to the backend; if it is down, answer with a clear 503 instead of an empty 500. */
@@ -25,6 +27,7 @@ const backendProxy = {
 
 export default defineConfig({
   plugins: [react()],
+  define: { __APP_VERSION__: JSON.stringify(version) },
   server: {
     port: 5173,
     proxy: {
