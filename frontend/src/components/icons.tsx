@@ -1,12 +1,18 @@
 import {
+  Archive,
+  ArchiveRestore,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
   Check,
   ChevronRight,
   Copy,
+  Download,
   FileText,
   Info,
+  Keyboard,
+  Link2,
+  Loader2,
   Menu,
   Moon,
   MoreHorizontal,
@@ -24,6 +30,8 @@ import {
   ShieldCheck,
   Sun,
   Target,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   X,
   type LucideIcon,
@@ -67,3 +75,15 @@ export const RefreshIcon = icon(RefreshCw);
 export const PinIcon = icon(Pin);
 export const PinOffIcon = icon(PinOff);
 export const ShareIcon = icon(Share);
+export const ArchiveIcon = icon(Archive);
+export const RestoreIcon = icon(ArchiveRestore);
+export const DownloadIcon = icon(Download);
+export const KeyboardIcon = icon(Keyboard);
+export const LinkIcon = icon(Link2);
+export const ThumbsUpIcon = icon(ThumbsUp);
+export const ThumbsDownIcon = icon(ThumbsDown);
+
+/** Spinner for in-progress requests. */
+export function SpinnerIcon({ className = "h-4 w-4" }: IconProps) {
+  return <Loader2 className={`${className} animate-spin`} strokeWidth={1.75} aria-hidden="true" />;
+}
