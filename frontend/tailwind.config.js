@@ -17,12 +17,13 @@ export default {
         faint: token("faint"),
         accent: token("accent"),
         "accent-hover": token("accent-hover"),
+        "accent-soft": token("accent-soft"),
         "accent-fg": token("accent-fg"),
         line: "var(--line)",
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-        serif: ['"Source Serif 4"', "ui-serif", "Georgia", "serif"],
+        serif: ["\"Source Serif 4\"", "ui-serif", "Georgia", "serif"],
       },
       keyframes: {
         "message-in": {
