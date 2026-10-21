@@ -9,6 +9,14 @@ class ChatRequest(BaseModel):
         default=None, description="Existing session id; omit to start a new one."
     )
     message: str = Field(..., min_length=1, max_length=2000)
+    replace_from_turn: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Zero-based turn index. When set, that turn and every later turn are replaced "
+            "by the answer to this message (used for regenerate and edit)."
+        ),
+    )
 
     @field_validator("message")
     @classmethod

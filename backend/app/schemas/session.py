@@ -1,8 +1,8 @@
 """Request and response schemas for the session endpoints."""
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class _UTCModel(BaseModel):
@@ -19,6 +19,7 @@ class SessionSummary(_UTCModel):
 
     id: str
     title: str
+    pinned: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -41,13 +42,24 @@ class SessionDetail(SessionSummary):
     turns: List[TurnOut]
 
 
-class SessionRename(BaseModel):
-    title: str = Field(..., min_length=1, max_length=120)
+class SessionUpdate(BaseModel):
+    """Partial update: send `title`, `pinned`, or both."""
+
+    title: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    pinned: Optional[bool] = None
 
     @field_validator("title")
     @classmethod
-    def _strip_title(cls, v: str) -> str:
+    def _strip_title(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
         v = v.strip()
         if not v:
             raise ValueError("title must not be blank")
         return v
+
+    @model_validator(mode="after")
+    def _something_to_change(self) -> "SessionUpdate":
+        if self.title is None and self.pinned is None:
+            raise ValueError("send at least one of: title, pinned")
+        return self
