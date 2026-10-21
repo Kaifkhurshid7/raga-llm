@@ -16,7 +16,7 @@ describe("groupByDate", () => {
       [session("a", 0), session("b", 1), session("c", 4), session("d", 30)],
       NOW
     );
-    expect(groups.map((g) => g.label)).toEqual(["Today", "Yesterday", "Last 7 days", "Older"]);
+    expect(groups.map((g) => g.label)).toEqual(["Today", "Yesterday", "Previous 7 days", "Older"]);
     expect(groups.map((g) => g.sessions.map((s) => s.id))).toEqual([["a"], ["b"], ["c"], ["d"]]);
   });
 

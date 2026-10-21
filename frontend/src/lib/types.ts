@@ -26,6 +26,9 @@ export interface Evidence {
 export interface Message {
   role: "user" | "assistant";
   content: string;
+  /** Server id of the turn this message belongs to; absent until the conversation is reloaded. */
+  turnId?: string;
+  feedback?: "up" | "down" | null;
   modelVersion?: string;
   servingCondition?: string;
   evidence?: Evidence;

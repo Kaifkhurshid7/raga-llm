@@ -6,7 +6,7 @@ export interface SessionGroup {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const LABELS = ["Today", "Yesterday", "Last 7 days", "Older"] as const;
+const LABELS = ["Today", "Yesterday", "Previous 7 days", "Older"] as const;
 
 function startOfDay(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
