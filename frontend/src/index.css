@@ -3,32 +3,34 @@
 @tailwind utilities;
 
 :root {
-  --page: 250 249 246;
-  --surface: 243 241 236;
+  --page: 250 250 249;
+  --surface: 247 247 245;
   --raised: 255 255 255;
-  --overlay: 234 230 221;
-  --ink: 31 29 26;
-  --muted: 107 103 95;
-  --faint: 140 136 128;
-  --line: #e4e0d8;
-  --accent: 63 74 138;
-  --accent-hover: 82 94 160;
+  --overlay: 238 238 235;
+  --ink: 36 36 36;
+  --muted: 107 107 107;
+  --faint: 115 115 115;
+  --line: #e5e5e3;
+  --accent: 164 92 56;
+  --accent-hover: 144 78 44;
+  --accent-soft: 246 235 228;
   --accent-fg: 255 255 255;
   color-scheme: light;
 }
 
 :root.dark {
-  --page: 13 13 15;
-  --surface: 22 22 26;
-  --raised: 30 30 35;
-  --overlay: 38 38 48;
-  --ink: 242 240 236;
-  --muted: 154 154 159;
-  --faint: 107 107 112;
-  --line: rgba(255, 255, 255, 0.08);
-  --accent: 139 124 246;
-  --accent-hover: 160 147 248;
-  --accent-fg: 13 13 15;
+  --page: 26 26 25;
+  --surface: 32 32 31;
+  --raised: 38 38 37;
+  --overlay: 48 48 47;
+  --ink: 236 236 234;
+  --muted: 163 163 160;
+  --faint: 125 125 122;
+  --line: rgba(255, 255, 255, 0.09);
+  --accent: 212 137 106;
+  --accent-hover: 224 154 124;
+  --accent-soft: 54 38 31;
+  --accent-fg: 26 26 25;
   color-scheme: dark;
 }
 
@@ -64,7 +66,7 @@ body {
 .markdown h1,
 .markdown h2,
 .markdown h3 {
-  @apply mb-2 mt-5 font-serif font-semibold;
+  @apply mb-2 mt-5 font-semibold;
 }
 .markdown h1 {
   @apply text-xl;
