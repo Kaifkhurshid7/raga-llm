@@ -51,11 +51,11 @@ export default function ChatPanel({
         />
       )}
 
-      <div className="mx-auto w-full max-w-[760px]">
+      <div className="mx-auto w-full max-w-[948px]">
         {error && (
           <div
             role="alert"
-            className="mx-4 mb-2 flex items-start justify-between gap-3 rounded-lg border border-line bg-raised px-3 py-2 text-sm"
+            className="mx-4 mb-2 flex items-start justify-between gap-3 sm:mx-6 rounded-lg border border-line bg-raised px-3 py-2 text-sm"
           >
             <span className="text-muted">{error}</span>
             <span className="flex shrink-0 items-center gap-2">
