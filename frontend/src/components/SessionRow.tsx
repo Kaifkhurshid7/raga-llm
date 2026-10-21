@@ -8,7 +8,20 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { SessionSummary } from "../lib/api";
-import { MoreIcon, PencilIcon, PinIcon, PinOffIcon, ShareIcon, TrashIcon } from "./icons";
+import type { ExportFormat } from "../lib/export";
+import Highlight from "./Highlight";
+import {
+  ArchiveIcon,
+  DownloadIcon,
+  LinkIcon,
+  MoreIcon,
+  PencilIcon,
+  PinIcon,
+  PinOffIcon,
+  ShareIcon,
+  SpinnerIcon,
+  TrashIcon,
+} from "./icons";
 
 interface Props {
   session: SessionSummary;
@@ -19,6 +32,12 @@ interface Props {
   onRename: (id: string, title: string) => void;
   onTogglePin: (session: SessionSummary) => void;
   onShare: (session: SessionSummary) => void;
+  onExport: (session: SessionSummary, format: ExportFormat) => void;
+  onArchive: (session: SessionSummary) => void;
+  /** Current search text, used to highlight matches. */
+  query: string;
+  /** A request for this conversation is in flight; its actions are disabled. */
+  busy: boolean;
   onRequestDelete: (session: SessionSummary) => void;
 }
 
@@ -63,6 +82,10 @@ export default function SessionRow({
   onRename,
   onTogglePin,
   onShare,
+  onExport,
+  onArchive,
+  query,
+  busy,
   onRequestDelete,
 }: Props) {
   const [menu, setMenu] = useState<{ top: number; left: number } | null>(null);
@@ -187,14 +210,35 @@ export default function SessionRow({
             aria-current={active ? "page" : undefined}
             title={session.title}
             tabIndex={tabIndex}
-            className={`block w-full truncate rounded-lg py-2 pl-3 pr-9 text-left text-sm transition-colors duration-100 hover:bg-overlay ${
+            className={`block w-full rounded-lg py-2 pl-3 pr-9 text-left text-sm transition-colors duration-100 hover:bg-overlay ${
               active ? "bg-overlay font-medium" : ""
-            }`}
+            } ${busy ? "opacity-60" : ""}`}
           >
-            {session.title}
+            <span className="block truncate">
+              <Highlight text={session.title} query={query} />
+            </span>
+            {session.snippet && (
+              <span className="mt-0.5 block truncate text-xs font-normal text-muted">
+                <Highlight text={session.snippet} query={query} />
+              </span>
+            )}
           </button>
 
-          {pinned && !menuOpen && (
+          {busy && (
+            <SpinnerIcon className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" />
+          )}
+
+          {!busy && session.shared && !pinned && !menuOpen && (
+            <span
+              title="Shared with a public link"
+              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-faint transition-opacity duration-100 group-focus-within:opacity-0 group-hover:opacity-0"
+            >
+              <LinkIcon className="h-3.5 w-3.5" />
+              <span className="sr-only">Shared with a public link</span>
+            </span>
+          )}
+
+          {!busy && pinned && !menuOpen && (
             <PinIcon className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint transition-opacity duration-100 group-focus-within:opacity-0 group-hover:opacity-0" />
           )}
 
@@ -205,6 +249,7 @@ export default function SessionRow({
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             tabIndex={tabIndex}
+            disabled={busy}
             onClick={() => (menuOpen ? closeMenu() : openMenu())}
             className={`absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted transition-opacity duration-100 hover:bg-overlay hover:text-ink focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${
               menuOpen || active ? "opacity-100" : "opacity-0"
@@ -234,7 +279,6 @@ export default function SessionRow({
                 >
                   {pinned ? "Unpin" : "Pin"}
                 </MenuItem>
-                <Divider />
                 <MenuItem
                   icon={<ShareIcon className="h-4 w-4" />}
                   onClick={() => choose(() => onShare(session))}
@@ -242,6 +286,25 @@ export default function SessionRow({
                   Share
                 </MenuItem>
                 <Divider />
+                <MenuItem
+                  icon={<DownloadIcon className="h-4 w-4" />}
+                  onClick={() => choose(() => onExport(session, "markdown"))}
+                >
+                  Export as Markdown
+                </MenuItem>
+                <MenuItem
+                  icon={<DownloadIcon className="h-4 w-4" />}
+                  onClick={() => choose(() => onExport(session, "pdf"))}
+                >
+                  Export as PDF
+                </MenuItem>
+                <Divider />
+                <MenuItem
+                  icon={<ArchiveIcon className="h-4 w-4" />}
+                  onClick={() => choose(() => onArchive(session))}
+                >
+                  Archive
+                </MenuItem>
                 <MenuItem
                   danger
                   icon={<TrashIcon className="h-4 w-4" />}

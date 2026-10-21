@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import type { Theme } from "../hooks/useTheme";
-import type { Health } from "../lib/api";
+import { ApiError, getSession, listSessions, type Health } from "../lib/api";
+import { buildBundle, downloadBlob } from "../lib/export";
 import {
   BACKGROUNDS,
   LIMITS,
@@ -8,7 +9,11 @@ import {
   validateProfile,
   type Profile,
 } from "../lib/profile";
+import ArchivedList from "./ArchivedList";
 import Avatar from "./Avatar";
+import { SpinnerIcon } from "./icons";
+import { ShortcutRows } from "./ShortcutsDialog";
+import { useToast } from "./Toast";
 
 interface Props {
   profile: Profile;
@@ -18,13 +23,10 @@ interface Props {
   onBack: () => void;
   /** Server status from /health, or null if it could not be read. */
   health: Health | null;
+  /** The archived list changed (restore or delete), so the sidebar should refresh. */
+  onSessionsChanged: () => void;
+  onOpenSession: (id: string) => void;
 }
-
-const SHORTCUTS: [string, string][] = [
-  ["Enter", "Send message"],
-  ["Shift + Enter", "New line"],
-  ["Esc", "Cancel editing, close dialogs, leave settings"],
-];
 
 const inputClass =
   "w-full rounded-lg border border-line bg-page px-3 py-2 text-sm outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-faint focus:border-accent focus:shadow-[0_0_0_3px_rgb(var(--accent)/0.15)]";
@@ -108,7 +110,11 @@ export default function SettingsPage({
   onToggleTheme,
   onBack,
   health,
+  onSessionsChanged,
+  onOpenSession,
 }: Props) {
+  const toast = useToast();
+  const [exporting, setExporting] = useState<string | null>(null);
   const [draft, setDraft] = useState<Profile>(profile);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -116,7 +122,8 @@ export default function SettingsPage({
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onBack();
+      // Escape belongs to an open dialog first.
+      if (e.key === "Escape" && !document.querySelector('[aria-modal="true"]')) onBack();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -140,6 +147,40 @@ export default function SettingsPage({
       setPhotoError(null);
     } catch (err) {
       setPhotoError(err instanceof Error ? err.message : "Couldn't use that image.");
+    }
+  }
+
+  /** Downloads every conversation, archived ones included, as one JSON file. */
+  async function exportAll() {
+    if (exporting) return;
+    try {
+      const summaries = [];
+      for (const archived of [false, true]) {
+        for (let offset = 0; ; offset += 100) {
+          const page = await listSessions({ archived, limit: 100, offset });
+          summaries.push(...page);
+          if (page.length < 100) break;
+        }
+      }
+      if (summaries.length === 0) {
+        toast("There are no conversations to export yet.", { kind: "info" });
+        return;
+      }
+      const details = [];
+      for (const [i, s] of summaries.entries()) {
+        setExporting(`Exporting ${i + 1} of ${summaries.length}…`);
+        details.push(await getSession(s.id));
+      }
+      const { blob, filename } = buildBundle(details);
+      downloadBlob(blob, filename);
+      toast(`Exported ${details.length} conversations`, { kind: "success" });
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Couldn't export your conversations.", {
+        kind: "error",
+        action: { label: "Retry", onClick: () => void exportAll() },
+      });
+    } finally {
+      setExporting(null);
     }
   }
 
@@ -293,18 +334,34 @@ export default function SettingsPage({
           </Card>
 
           <Card title="Keyboard shortcuts">
-            <dl className="divide-y divide-line text-sm">
-              {SHORTCUTS.map(([keys, action]) => (
-                <div key={action} className="flex items-center justify-between gap-4 px-5 py-3">
-                  <dt className="text-muted">{action}</dt>
-                  <dd>
-                    <kbd className="rounded border border-line bg-page px-1.5 py-0.5 font-sans text-xs">
-                      {keys}
-                    </kbd>
-                  </dd>
-                </div>
-              ))}
-            </dl>
+            <div className="px-5 py-1">
+              <ShortcutRows />
+            </div>
+          </Card>
+
+          <Card title="Archived conversations">
+            <ArchivedList onChanged={onSessionsChanged} onOpen={onOpenSession} />
+          </Card>
+
+          <Card title="Data export">
+            <div className="flex items-center justify-between gap-4 p-5">
+              <div>
+                <p className="text-sm font-medium">Export all conversations</p>
+                <p className="mt-0.5 text-xs text-faint">
+                  One JSON file with every conversation, archived ones included. To export a single
+                  conversation as Markdown or JSON, use its sidebar menu.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={exportAll}
+                disabled={exporting !== null}
+                className={`${secondaryButton} flex shrink-0 items-center gap-2`}
+              >
+                {exporting && <SpinnerIcon />}
+                {exporting ?? "Export all"}
+              </button>
+            </div>
           </Card>
 
           <Card title="Privacy and data">
@@ -314,25 +371,46 @@ export default function SettingsPage({
                 inference service to generate answers.
               </li>
               <li>Your profile and theme are stored only in this browser.</li>
-              <li>Delete a conversation from the sidebar menu to remove it from the database.</li>
+              <li>
+                Archiving only hides a conversation. Deleting removes it from the database for good
+                and disables its share link.
+              </li>
+              <li>
+                A public share link lets anyone who has it read that conversation. Turn it off from the
+                Share dialog at any time.
+              </li>
+              <li>Exports contain your messages and the answers only, never system prompts or settings.</li>
+              <li>This application has no accounts, so there is nothing to sign out of.</li>
             </ul>
           </Card>
 
-          <Card title="Application">
-            {health ? (
-              <dl className="divide-y divide-line text-sm">
-                <div className="flex items-center justify-between gap-4 px-5 py-3">
-                  <dt className="text-muted">Serving condition</dt>
-                  <dd>{health.serving_condition}</dd>
-                </div>
-                <div className="flex items-center justify-between gap-4 px-5 py-3">
-                  <dt className="text-muted">Responses</dt>
-                  <dd>{health.mock_inference ? "Mock (no model connected)" : "Live inference service"}</dd>
-                </div>
-              </dl>
-            ) : (
-              <p className="p-5 text-sm text-muted">Couldn't read the server status.</p>
-            )}
+          <Card title="About RAGA">
+            <p className="border-b border-line p-5 text-sm text-muted">
+              RAGA is a research system studying how well language models answer questions about
+              Hindustani classical music, comparing baseline, few-shot, retrieval-augmented and
+              fine-tuned serving. Answers can be wrong: check important claims against a teacher or a
+              reliable source.
+            </p>
+            <dl className="divide-y divide-line text-sm">
+              <div className="flex items-center justify-between gap-4 px-5 py-3">
+                <dt className="text-muted">Version</dt>
+                <dd>{__APP_VERSION__}</dd>
+              </div>
+              {health ? (
+                <>
+                  <div className="flex items-center justify-between gap-4 px-5 py-3">
+                    <dt className="text-muted">Serving condition</dt>
+                    <dd>{health.serving_condition}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 px-5 py-3">
+                    <dt className="text-muted">Responses</dt>
+                    <dd>{health.mock_inference ? "Mock (no model connected)" : "Live inference service"}</dd>
+                  </div>
+                </>
+              ) : (
+                <div className="px-5 py-3 text-muted">Couldn't read the server status.</div>
+              )}
+            </dl>
           </Card>
         </div>
       </div>
