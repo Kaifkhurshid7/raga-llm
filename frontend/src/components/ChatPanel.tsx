@@ -1,8 +1,17 @@
 import type { Message } from "../lib/types";
+import { useElementWidth } from "../hooks/useElementWidth";
+import HomeIllustration from "./HomeIllustration";
 import HomeScreen from "./HomeScreen";
 import { CloseIcon } from "./icons";
 import InputBar from "./InputBar";
 import MessageList from "./MessageList";
+
+/** The welcome content (the widest row is the suggestion pills) is centred in this width. */
+const WELCOME_WIDTH_PX = 640;
+/** Clear space kept between the welcome content and the drawing, plus its right inset. */
+const ILLUSTRATION_MARGIN_PX = 56;
+const ILLUSTRATION_MIN_PX = 150;
+const ILLUSTRATION_MAX_PX = 300;
 
 interface Props {
   messages: Message[];
@@ -15,6 +24,8 @@ interface Props {
   onPrompt: (query: string) => void;
   onEdit: (turnIndex: number, text: string) => void;
   onRegenerate: (turnIndex: number) => void;
+  onFeedback?: (turnIndex: number, rating: "up" | "down" | null) => void;
+  feedbackBusy?: ReadonlySet<string>;
   /** Present when the failed request can be repeated. */
   onRetry?: () => void;
   onDismissError: () => void;
@@ -31,16 +42,32 @@ export default function ChatPanel({
   onPrompt,
   onEdit,
   onRegenerate,
+  onFeedback,
+  feedbackBusy,
   onRetry,
   onDismissError,
 }: Props) {
   const isHome = messages.length === 0 && !generating;
+  const [homeRef, homeWidth] = useElementWidth<HTMLDivElement>();
+  // Fit the drawing into the gutter beside the welcome text; show it only if it is big enough to read.
+  const gutter = Math.min(
+    ILLUSTRATION_MAX_PX,
+    Math.floor((homeWidth - WELCOME_WIDTH_PX) / 2 - ILLUSTRATION_MARGIN_PX)
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {isHome ? (
-        <div className="flex-1 overflow-y-auto">
-          <HomeScreen onPrompt={onPrompt} />
+        <div ref={homeRef} className="relative min-h-0 flex-1">
+          {gutter >= ILLUSTRATION_MIN_PX && (
+            <HomeIllustration
+              style={{ width: gutter }}
+              className="pointer-events-none absolute inset-y-4 right-6"
+            />
+          )}
+          <div className="relative h-full overflow-y-auto">
+            <HomeScreen onPrompt={onPrompt} />
+          </div>
         </div>
       ) : (
         <MessageList
@@ -48,6 +75,8 @@ export default function ChatPanel({
           generating={generating}
           onEdit={onEdit}
           onRegenerate={onRegenerate}
+          onFeedback={onFeedback}
+          feedbackBusy={feedbackBusy}
         />
       )}
 
