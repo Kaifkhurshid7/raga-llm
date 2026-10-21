@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.chat import router as chat_router
-from app.api.sessions import router as sessions_router
+from app.api.sessions import router as sessions_router, shared_router
 from app.core.config import settings
 from app.core.session_service import SessionService
 from app.db.migrations import upgrade_schema
@@ -37,6 +37,7 @@ app.add_middleware(
 
 app.include_router(chat_router)
 app.include_router(sessions_router)
+app.include_router(shared_router)
 
 
 @app.exception_handler(SQLAlchemyError)
