@@ -26,9 +26,9 @@ yarn-error.log*
 infra/.env
 !infra/.env.example
 
-# --- Dataset (generated artifacts) ---
-dataset/generated/*.jsonl
-dataset/splits/*.jsonl
+# --- Dataset ---
+# dataset/generated/ and dataset/splits/ are tracked on purpose: every machine must train and evaluate
+# on identical files. Rebuild them from dataset/training-questions.xlsx with scripts/build_from_xlsx.py.
 
 # --- Fine-tuning / models ---
 finetuning/adapters/

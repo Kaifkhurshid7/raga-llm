@@ -53,18 +53,24 @@ def main():
     for r in records:
         by_group[r["fact_group"]].append(r)
 
-    groups = list(by_group.keys())
-    random.Random(SEED).shuffle(groups)
+    # Stratified by category: shuffle and cut the fact_groups of each category separately, so every
+    # category appears in train, val and test. A group never spans categories (validate.py checks this).
+    groups_by_cat = defaultdict(list)
+    for g, recs in by_group.items():
+        groups_by_cat[recs[0]["category"]].append(g)
 
-    n = len(groups)
-    n_train = int(n * RATIOS["train"])
-    n_val = int(n * RATIOS["val"])
-
-    split_groups = {
-        "train": groups[:n_train],
-        "val": groups[n_train:n_train + n_val],
-        "test": groups[n_train + n_val:],
-    }
+    split_groups = {"train": [], "val": [], "test": []}
+    for cat in sorted(groups_by_cat):
+        groups = sorted(groups_by_cat[cat])
+        random.Random(f"{SEED}-{cat}").shuffle(groups)
+        n = len(groups)
+        # At least one group in val and test whenever the category has three or more groups.
+        n_val = max(1, round(n * RATIOS["val"])) if n >= 3 else 0
+        n_test = max(1, round(n * RATIOS["test"])) if n >= 3 else 0
+        n_train = n - n_val - n_test
+        split_groups["train"] += groups[:n_train]
+        split_groups["val"] += groups[n_train:n_train + n_val]
+        split_groups["test"] += groups[n_train + n_val:]
 
     for split_name, group_list in split_groups.items():
         out_records = [r for g in group_list for r in by_group[g]]

@@ -78,10 +78,10 @@ def check_citations(rec, issues):
                            f"page-level citation '{m.group()}' in training output"))
 
 
-def check_length(rec, issues):
+def check_length(rec, issues, enforce_min=True):
     lo, hi = LENGTH_RANGES.get(rec["category"], (30, 300))
     n = len(rec["output"].split())
-    if n < lo:
+    if n < lo and enforce_min:
         issues.append((rec["id"], "length", f"{n} words, below minimum {lo}"))
     elif n > hi:
         issues.append((rec["id"], "length", f"{n} words, above maximum {hi}"))
@@ -104,6 +104,9 @@ def check_placeholder(rec, issues):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--strict", action="store_true")
+    ap.add_argument("--no-min-length", action="store_true",
+                    help="do not flag answers shorter than the category minimum (the maximum is still "
+                         "enforced). For the short-answer training-questions.xlsx dataset.")
     args = ap.parse_args()
 
     issues = []
@@ -134,7 +137,7 @@ def main():
                 check_notation(rec, issues)
                 check_transliteration(rec, issues)
                 check_citations(rec, issues)
-                check_length(rec, issues)
+                check_length(rec, issues, enforce_min=not args.no_min_length)
                 check_placeholder(rec, issues)
 
                 # Case-SENSITIVE comparison -- see CONVENTIONS.md on why
